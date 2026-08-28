@@ -2,8 +2,11 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 
 	"blog-backend/controllers"
+	_ "blog-backend/docs"
 	"blog-backend/middleware"
 )
 
@@ -16,6 +19,9 @@ func InitRouter() *gin.Engine {
 	r.GET("/api/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"code": 0, "message": "ok", "data": nil})
 	})
+
+	// Swagger 文档
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	api := r.Group("/api/v1")
 	{

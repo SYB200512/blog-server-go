@@ -30,3 +30,8 @@ type CommentQuery struct {
 	PageSize int `form:"page_size"`
 	Status   *int8 `form:"status"` // 后台筛选用
 }
+
+// ReviewCommentRequest 审核评论请求
+type ReviewCommentRequest struct {
+	Status int8 `json:"status"` // 0 待审核，1 已通过
+}

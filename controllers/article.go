@@ -114,6 +114,16 @@ func AdminGetArticle(c *gin.Context) {
 }
 
 // CreateArticle 后台：创建文章
+// @Summary 创建文章
+// @Tags 后台-文章
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body dto.ArticleCreateRequest true "文章信息"
+// @Success 200 {object} common.Response{data=models.Article} "成功"
+// @Failure 400 {object} common.Response "参数错误"
+// @Router /api/v1/admin/articles [post]
+// @Id admin_article_create
 func CreateArticle(c *gin.Context) {
 	var req dto.ArticleCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -129,6 +139,17 @@ func CreateArticle(c *gin.Context) {
 }
 
 // UpdateArticle 后台：更新文章
+// @Summary 更新文章
+// @Tags 后台-文章
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "文章ID"
+// @Param body body dto.ArticleUpdateRequest true "文章信息"
+// @Success 200 {object} common.Response{data=models.Article} "成功"
+// @Failure 400 {object} common.Response "参数错误"
+// @Router /api/v1/admin/articles/{id} [put]
+// @Id admin_article_update
 func UpdateArticle(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -149,6 +170,15 @@ func UpdateArticle(c *gin.Context) {
 }
 
 // DeleteArticle 后台：删除文章
+// @Summary 删除文章
+// @Tags 后台-文章
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "文章ID"
+// @Success 200 {object} common.Response "成功"
+// @Failure 400 {object} common.Response "参数错误"
+// @Router /api/v1/admin/articles/{id} [delete]
+// @Id admin_article_delete
 func DeleteArticle(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -163,6 +193,12 @@ func DeleteArticle(c *gin.Context) {
 }
 
 // Archive 前台：时间归档
+// @Summary 按时间归档
+// @Tags 前台-文章
+// @Produce json
+// @Success 200 {object} common.Response{data=map[string][]models.Article} "成功"
+// @Router /api/v1/archive [get]
+// @Id article_archive
 func Archive(c *gin.Context) {
 	result, err := services.Archive()
 	if err != nil {

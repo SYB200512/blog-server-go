@@ -11,6 +11,14 @@ import (
 )
 
 // ListCommentsByArticle 前台：文章评论列表
+// @Summary 文章评论列表
+// @Tags 前台-评论
+// @Produce json
+// @Param id path int true "文章ID"
+// @Success 200 {object} common.Response{data=[]models.Comment} "成功"
+// @Failure 400 {object} common.Response "参数错误"
+// @Router /api/v1/articles/{id}/comments [get]
+// @Id comment_list
 func ListCommentsByArticle(c *gin.Context) {
 	articleID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -26,6 +34,16 @@ func ListCommentsByArticle(c *gin.Context) {
 }
 
 // CreateComment 前台：发表评论
+// @Summary 发表评论
+// @Tags 前台-评论
+// @Accept json
+// @Produce json
+// @Param id path int true "文章ID"
+// @Param body body dto.CommentCreateRequest true "评论信息"
+// @Success 200 {object} common.Response{data=models.Comment} "成功"
+// @Failure 400 {object} common.Response "参数错误"
+// @Router /api/v1/articles/{id}/comments [post]
+// @Id comment_create
 func CreateComment(c *gin.Context) {
 	articleID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -52,6 +70,17 @@ func CreateComment(c *gin.Context) {
 }
 
 // AdminListComments 后台：评论管理列表
+// @Summary 后台评论列表
+// @Tags 后台-评论
+// @Produce json
+// @Security BearerAuth
+// @Param page query int false "页码" default(1)
+// @Param page_size query int false "每页数量" default(10)
+// @Param status query int false "状态: 0 待审核, 1 已通过"
+// @Success 200 {object} common.Response{data=[]models.Comment} "成功"
+// @Failure 400 {object} common.Response "参数错误"
+// @Router /api/v1/admin/comments [get]
+// @Id admin_comment_list
 func AdminListComments(c *gin.Context) {
 	var q dto.CommentQuery
 	if err := c.ShouldBindQuery(&q); err != nil {
@@ -67,6 +96,17 @@ func AdminListComments(c *gin.Context) {
 }
 
 // ReviewComment 后台：审核评论
+// @Summary 审核评论
+// @Tags 后台-评论
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "评论ID"
+// @Param body body dto.ReviewCommentRequest true "审核信息"
+// @Success 200 {object} common.Response "成功"
+// @Failure 400 {object} common.Response "参数错误"
+// @Router /api/v1/admin/comments/{id} [put]
+// @Id admin_comment_review
 func ReviewComment(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {

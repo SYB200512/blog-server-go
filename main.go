@@ -9,6 +9,15 @@ import (
 	"blog-backend/router"
 )
 
+// @title 博客系统 API
+// @version 1.0
+// @description 个人博客系统的后端 HTTP API
+// @host localhost:8080
+// @BasePath /api/v1
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 func main() {
 	// 1. 加载配置
 	cfg, err := config.InitConfig("config/config.yaml")
