@@ -1,0 +1,32 @@
+# ===== 编译产物 =====
+/blog-backend
+/initadmin
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# ===== 依赖 =====
+/vendor/
+
+# ===== 日志 =====
+*.log
+/logs/
+
+# ===== 配置（secrets 由环境变量注入，勿提交） =====
+.env
+config/config.local.yaml
+
+# ===== 编辑器与系统 =====
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

@@ -1,0 +1,23 @@
+# 博客后端配置文件
+server:
+  port: 8080
+  mode: debug # debug / release
+
+database:
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  password: king.sun1
+  dbname: blog
+  charset: utf8mb4
+  # 连接池
+  max_open_conns: 100
+  max_idle_conns: 10
+
+jwt:
+  secret: "blog-jwt-secret-change-me-in-production"
+  expire_hours: 24
+
+log:
+  level: debug
+  file: logs/app.log
