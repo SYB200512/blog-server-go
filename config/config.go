@@ -76,7 +76,10 @@ func InitConfig(path string) (*Config, error) {
 		cfg.JWT.ExpireHours = 24
 	}
 	// 支持用环境变量覆盖敏感配置，避免把密码/密钥写进仓库
-	// 设置 DB_PASSWORD 覆盖数据库密码，JWT_SECRET 覆盖 JWT 签名密钥
+	// 设置 DB_HOST 覆盖数据库地址，DB_PASSWORD 覆盖数据库密码，JWT_SECRET 覆盖 JWT 签名密钥
+	if host := os.Getenv("DB_HOST"); host != "" {
+		cfg.Database.Host = host
+	}
 	if pwd := os.Getenv("DB_PASSWORD"); pwd != "" {
 		cfg.Database.Password = pwd
 	}
