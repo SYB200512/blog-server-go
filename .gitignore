@@ -18,7 +18,8 @@
 
 # ===== 配置（secrets 由环境变量注入，勿提交） =====
 .env
-config/config.local.yaml
+/config.local.yaml
+config/config.yaml
 
 # ===== 编辑器与系统 =====
 .vscode/*

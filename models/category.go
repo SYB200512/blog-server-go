@@ -9,8 +9,8 @@ type Category struct {
 	Description string    `gorm:"size:255" json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
 
-	// 非表字段：文章数量（查询时填充）
-	ArticleCount int64 `gorm:"-" json:"article_count"`
+	// 非表字段：文章数量（查询时填充），只读
+	ArticleCount int64 `gorm:"->;column:article_count" json:"article_count"`
 }
 
 // TableName 指定表名

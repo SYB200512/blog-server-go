@@ -38,6 +38,7 @@ func InitRouter() *gin.Engine {
 		api.GET("/categories", controllers.ListCategories)
 		api.GET("/tags", controllers.ListTags)
 		api.GET("/archive", controllers.Archive)
+		api.GET("/covers/:filename", controllers.GetCover)
 		api.GET("/articles/:id/comments", controllers.ListCommentsByArticle)
 		api.POST("/articles/:id/comments", controllers.CreateComment)
 

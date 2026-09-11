@@ -122,6 +122,12 @@ func DeleteArticle(id uint64) error {
 	return DB.Delete(&models.Article{}, id).Error
 }
 
+// UpdateArticleCover 异步生成封面完成后，仅回写 cover 字段
+func UpdateArticleCover(id uint64, cover string) error {
+	return DB.Model(&models.Article{}).Where("id = ?", id).
+		UpdateColumn("cover", cover).Error
+}
+
 // IncrementViews 浏览量 +1
 func IncrementViews(id uint64) error {
 	return DB.Model(&models.Article{}).Where("id = ?", id).

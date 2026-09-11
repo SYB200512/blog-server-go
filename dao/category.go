@@ -7,7 +7,7 @@ func ListCategories() ([]models.Category, error) {
 	var categories []models.Category
 	err := DB.Model(&models.Category{}).
 		Select("categories.*, COUNT(a.id) AS article_count").
-		Joins("LEFT JOIN articles a ON a.category_id = categories.id AND a.deleted_at IS NULL").
+		Joins("LEFT JOIN articles a ON a.category_id = categories.id AND a.deleted_at IS NULL AND a.status = 1").
 		Group("categories.id").
 		Order("categories.id ASC").
 		Scan(&categories).Error
@@ -54,7 +54,7 @@ func ListTags() ([]models.Tag, error) {
 	var tags []models.Tag
 	err := DB.Model(&models.Tag{}).
 		Select("tags.*, COUNT(at.article_id) AS article_count").
-		Joins("LEFT JOIN article_tags at ON at.tag_id = tags.id").
+		Joins("LEFT JOIN article_tags at ON at.tag_id = tags.id AND at.article_id IN (SELECT id FROM articles WHERE status = 1 AND deleted_at IS NULL)").
 		Group("tags.id").
 		Order("tags.id ASC").
 		Scan(&tags).Error

@@ -1,0 +1,32 @@
+# 博客后端配置——示例模板（提交进仓库，供参考结构与所需环境变量）
+# 复制为 config/config.yaml 使用：cp config.example.yaml config.yaml
+# ⚠️ 敏感值一律不要写进任何入库文件，统一用环境变量注入（优先级：环境变量 > yaml）：
+#   DB_HOST / DB_PORT / DB_USER / DB_NAME / DB_PASSWORD
+#   JWT_SECRET
+#   DASHSCOPE_API_KEY / DASHSCOPE_BASE / COVERS_DIR
+server:
+  port: 8080
+  mode: debug # debug / release
+
+database:
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  password: ""            # ← 用环境变量 DB_PASSWORD 注入
+  dbname: blog
+  charset: utf8mb4
+  max_open_conns: 100
+  max_idle_conns: 10
+
+jwt:
+  secret: ""              # ← 用环境变量 JWT_SECRET 注入
+  expire_hours: 24
+
+ai:
+  dashscope_api_key: ""   # ← 用环境变量 DASHSCOPE_API_KEY 注入
+  dashscope_base: "https://dashscope.aliyuncs.com"
+  covers_dir: "./covers"  # AI 生成的封面图存储目录
+
+log:
+  level: debug
+  file: logs/app.log

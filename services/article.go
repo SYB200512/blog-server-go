@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"log"
 
 	"gorm.io/gorm"
 
@@ -80,7 +81,35 @@ func CreateArticle(req *dto.ArticleCreateRequest) (*models.Article, error) {
 	if err := dao.CreateArticle(article, req.TagIDs); err != nil {
 		return nil, err
 	}
+	// 发布且未指定封面时，异步生成封面并回写（不阻塞发布）
+	if article.Status == 1 && article.Cover == "" {
+		generateCoverAsync(article.ID, article.Title, article.Summary)
+	}
 	return article, nil
+}
+
+// generateCoverAsync 后台协程生成封面，成功后回写 cover 字段
+func generateCoverAsync(id uint64, title, summary string) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Println("[ai] 生成封面协程 panic:", r)
+			}
+		}()
+		cover, err := GenerateArticleCover(title, summary)
+		if err != nil {
+			log.Println("[ai] 自动生成封面失败（异步）:", err)
+			return
+		}
+		if cover == "" {
+			return
+		}
+		if err := dao.UpdateArticleCover(id, cover); err != nil {
+			log.Println("[ai] 回写封面失败:", err)
+		} else {
+			log.Printf("[ai] 文章 %d 封面已生成: %s", id, cover)
+		}
+	}()
 }
 
 // UpdateArticle 更新文章
@@ -109,6 +138,10 @@ func UpdateArticle(id uint64, req *dto.ArticleUpdateRequest) (*models.Article, e
 	}
 	if req.IsTop != nil {
 		article.IsTop = *req.IsTop
+	}
+	// 已发布且仍未设置封面时，异步生成封面并回写（不阻塞更新）
+	if article.Status == 1 && article.Cover == "" {
+		generateCoverAsync(article.ID, article.Title, article.Summary)
 	}
 	if err := dao.UpdateArticle(article, req.TagIDs); err != nil {
 		return nil, err

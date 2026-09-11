@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 	"gorm.io/driver/mysql"
@@ -14,6 +15,7 @@ type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Database DatabaseConfig `yaml:"database"`
 	JWT      JWTConfig      `yaml:"jwt"`
+	AI       AIConfig       `yaml:"ai"`
 	Log      LogConfig      `yaml:"log"`
 }
 
@@ -36,6 +38,12 @@ type DatabaseConfig struct {
 type JWTConfig struct {
 	Secret      string `yaml:"secret"`
 	ExpireHours int    `yaml:"expire_hours"`
+}
+
+type AIConfig struct {
+	DashScopeAPIKey string `yaml:"dashscope_api_key"`
+	DashScopeBase   string `yaml:"dashscope_base"`
+	CoversDir       string `yaml:"covers_dir"`
 }
 
 type LogConfig struct {
@@ -75,16 +83,42 @@ func InitConfig(path string) (*Config, error) {
 	if cfg.JWT.ExpireHours == 0 {
 		cfg.JWT.ExpireHours = 24
 	}
-	// 支持用环境变量覆盖敏感配置，避免把密码/密钥写进仓库
-	// 设置 DB_HOST 覆盖数据库地址，DB_PASSWORD 覆盖数据库密码，JWT_SECRET 覆盖 JWT 签名密钥
+	if cfg.AI.DashScopeBase == "" {
+		cfg.AI.DashScopeBase = "https://dashscope.aliyuncs.com"
+	}
+	if cfg.AI.CoversDir == "" {
+		cfg.AI.CoversDir = "./covers"
+	}
+	// 支持用环境变量覆盖敏感配置，避免把密码/密钥写进仓库。优先级：环境变量 > config.yaml
 	if host := os.Getenv("DB_HOST"); host != "" {
 		cfg.Database.Host = host
+	}
+	if port := os.Getenv("DB_PORT"); port != "" {
+		if p, err := strconv.Atoi(port); err == nil {
+			cfg.Database.Port = p
+		}
+	}
+	if user := os.Getenv("DB_USER"); user != "" {
+		cfg.Database.User = user
+	}
+	if name := os.Getenv("DB_NAME"); name != "" {
+		cfg.Database.DBName = name
 	}
 	if pwd := os.Getenv("DB_PASSWORD"); pwd != "" {
 		cfg.Database.Password = pwd
 	}
 	if secret := os.Getenv("JWT_SECRET"); secret != "" {
 		cfg.JWT.Secret = secret
+	}
+	// AI 相关：DASHSCOPE_API_KEY 等优先用环境变量，避免把 key 写进仓库
+	if key := os.Getenv("DASHSCOPE_API_KEY"); key != "" {
+		cfg.AI.DashScopeAPIKey = key
+	}
+	if base := os.Getenv("DASHSCOPE_BASE"); base != "" {
+		cfg.AI.DashScopeBase = base
+	}
+	if dir := os.Getenv("COVERS_DIR"); dir != "" {
+		cfg.AI.CoversDir = dir
 	}
 	Cfg = cfg
 	return cfg, nil
