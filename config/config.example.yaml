@@ -28,5 +28,8 @@ ai:
   covers_dir: "./covers"  # AI 生成的封面图存储目录
 
 log:
-  level: debug
-  file: logs/app.log
+  level: debug # debug / info / warn / error
+  director: logs # 日志输出目录（.gitignore 已忽略 /logs/）
+  max_size: 10 # 单个日志文件大小上限（MB），超过自动切割
+  max_backups: 7 # 保留的旧日志文件数量
+  max_age: 30 # 日志文件最长保留天数

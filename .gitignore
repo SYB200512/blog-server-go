@@ -1,6 +1,7 @@
 # ===== 编译产物 =====
 /blog-backend
 /initadmin
+/blog-backend-linux
 *.exe
 *.exe~
 *.dll
@@ -8,6 +9,9 @@
 *.dylib
 *.test
 *.out
+
+# ===== 运行时数据 =====
+/covers/
 
 # ===== 依赖 =====
 /vendor/

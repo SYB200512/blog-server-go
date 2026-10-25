@@ -1,11 +1,14 @@
 package dao
 
-import "blog-backend/models"
+import (
+	"blog-backend/global"
+	"blog-backend/model/database"
+)
 
 // GetUserByUsername 根据用户名查询用户
-func GetUserByUsername(username string) (*models.User, error) {
-	var user models.User
-	err := DB.Where("username = ?", username).First(&user).Error
+func GetUserByUsername(username string) (*database.User, error) {
+	var user database.User
+	err := global.DB.Where("username = ?", username).First(&user).Error
 	if err != nil {
 		return nil, err
 	}
@@ -13,9 +16,9 @@ func GetUserByUsername(username string) (*models.User, error) {
 }
 
 // GetUserByID 根据 ID 查询用户
-func GetUserByID(id uint64) (*models.User, error) {
-	var user models.User
-	err := DB.First(&user, id).Error
+func GetUserByID(id uint64) (*database.User, error) {
+	var user database.User
+	err := global.DB.First(&user, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -23,6 +26,6 @@ func GetUserByID(id uint64) (*models.User, error) {
 }
 
 // CreateUser 创建用户
-func CreateUser(user *models.User) error {
-	return DB.Create(user).Error
+func CreateUser(user *database.User) error {
+	return global.DB.Create(user).Error
 }
