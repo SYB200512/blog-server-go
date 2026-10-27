@@ -12,7 +12,7 @@ on:
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15          # 防止网络问题导致无限挂起
+    timeout-minutes: 30          # 防止网络问题导致无限挂起（大文件上传较慢）
     steps:
       - uses: actions/checkout@v4
 
@@ -26,8 +26,8 @@ jobs:
       - name: go test
         run: go test ./...
 
-      - name: 交叉编译 Linux 二进制
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o blog-backend .
+      - name: 交叉编译 Linux 二进制（去除调试符号减小体积）
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o blog-backend .
 
       - name: 上传二进制到服务器（带重试）
         env:
@@ -39,7 +39,7 @@ jobs:
           chmod 600 /tmp/ssh_key
           for i in 1 2 3 4 5; do
             echo "== 上传尝试 $i =="
-            if scp -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            if scp -C -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                    -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 \
                    blog-backend "${USER}@${HOST}:/opt/blog/backend/releases/"; then
               echo "上传成功"; break
