@@ -71,11 +71,14 @@ jobs:
             install -m 0755 /opt/blog/backend/releases/blog-backend.new /opt/blog/backend/blog-backend
             rm -f /opt/blog/backend/releases/blog-backend.new
             /opt/blog/backend/start.sh
-            sleep 3
-            if pgrep -f blog-backend > /dev/null; then
-              echo "backend restarted OK"
-            else
-              echo "waiting for slow start..."
-              sleep 5
-              pgrep -f blog-backend && echo "backend restarted OK (delayed)"
-            fi
+            # 用 HTTP 探活替代 pgrep，避免进程启动慢导致误判；部署成功 = 服务可用
+            for i in 1 2 3 4 5 6; do
+              sleep 3
+              CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/health || echo 000)
+              if [ "$CODE" = "200" ]; then
+                echo "backend restarted OK (HTTP 200, 第 $i 次探测)"
+                exit 0
+              fi
+              echo "第 $i 次探活未返回 200（HTTP $CODE），继续等待"
+            done
+            echo "backend 探活失败"; exit 1
