@@ -29,7 +29,7 @@ jobs:
       - name: 交叉编译 Linux 二进制（去除调试符号减小体积）
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o blog-backend .
 
-      - name: 上传二进制到服务器（带重试）
+      - name: 上传二进制到服务器（以服务器端文件校验为准）
         env:
           HOST: ${{ secrets.SERVER_HOST }}
           USER: ${{ secrets.SERVER_USER }}
@@ -37,16 +37,27 @@ jobs:
         run: |
           echo "$KEY" > /tmp/ssh_key
           chmod 600 /tmp/ssh_key
+          # 国内网络下 scp 退出码不可靠：文件传完后连接可能迟迟不关闭导致误报失败。
+          # 因此忽略 scp 退出码，改用服务器端 stat 校验文件大小，一致才算成功。
+          LOCAL_SIZE=$(stat -c %s blog-backend)
           for i in 1 2 3 4 5; do
-            echo "== 上传尝试 $i =="
-            if scp -C -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                   -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 \
-                   blog-backend "${USER}@${HOST}:/opt/blog/backend/releases/"; then
-              echo "上传成功"; break
-            else
-              echo "尝试 $i 失败，20 秒后重试"; sleep 20
+            echo "== 上传尝试 $i（本地 $LOCAL_SIZE 字节）=="
+            scp -C -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 \
+                blog-backend "${USER}@${HOST}:/opt/blog/backend/releases/blog-backend.new" || true
+            REMOTE_SIZE=$(ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                -o ConnectTimeout=30 "${USER}@${HOST}" \
+                "stat -c %s /opt/blog/backend/releases/blog-backend.new 2>/dev/null" || echo 0)
+            echo "远程大小: ${REMOTE_SIZE:-0}"
+            if [ "$LOCAL_SIZE" = "${REMOTE_SIZE:-0}" ]; then
+              echo "上传校验通过（第 $i 次）"
+              break
             fi
+            echo "第 $i 次校验不符，20 秒后重试"; sleep 20
           done
+          if [ "$LOCAL_SIZE" != "${REMOTE_SIZE:-0}" ]; then
+            echo "上传最终校验失败"; exit 1
+          fi
 
       - name: 备份旧版本并重启后端
         uses: appleboy/ssh-action@v1
@@ -57,7 +68,8 @@ jobs:
           script: |
             set -e
             cp /opt/blog/backend/blog-backend /opt/blog/backend/blog-backend.bak 2>/dev/null || true
-            install -m 0755 /opt/blog/backend/releases/blog-backend /opt/blog/backend/blog-backend
+            install -m 0755 /opt/blog/backend/releases/blog-backend.new /opt/blog/backend/blog-backend
+            rm -f /opt/blog/backend/releases/blog-backend.new
             /opt/blog/backend/start.sh
             sleep 3
             if pgrep -f blog-backend > /dev/null; then
