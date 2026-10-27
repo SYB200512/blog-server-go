@@ -59,5 +59,11 @@ jobs:
             cp /opt/blog/backend/blog-backend /opt/blog/backend/blog-backend.bak 2>/dev/null || true
             install -m 0755 /opt/blog/backend/releases/blog-backend /opt/blog/backend/blog-backend
             /opt/blog/backend/start.sh
-            sleep 2
-            pgrep -f blog-backend && echo "backend restarted OK"
+            sleep 3
+            if pgrep -f blog-backend > /dev/null; then
+              echo "backend restarted OK"
+            else
+              echo "waiting for slow start..."
+              sleep 5
+              pgrep -f blog-backend && echo "backend restarted OK (delayed)"
+            fi
