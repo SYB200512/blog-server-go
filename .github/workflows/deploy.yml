@@ -59,26 +59,28 @@ jobs:
             echo "上传最终校验失败"; exit 1
           fi
 
-      - name: 备份旧版本并重启后端
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            set -e
-            cp /opt/blog/backend/blog-backend /opt/blog/backend/blog-backend.bak 2>/dev/null || true
-            install -m 0755 /opt/blog/backend/releases/blog-backend.new /opt/blog/backend/blog-backend
-            rm -f /opt/blog/backend/releases/blog-backend.new
-            /opt/blog/backend/start.sh
-            # 用 HTTP 探活替代 pgrep，避免进程启动慢导致误判；部署成功 = 服务可用
-            for i in 1 2 3 4 5 6; do
-              sleep 3
-              CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/health || echo 000)
-              if [ "$CODE" = "200" ]; then
-                echo "backend restarted OK (HTTP 200, 第 $i 次探测)"
-                exit 0
-              fi
-              echo "第 $i 次探活未返回 200（HTTP $CODE），继续等待"
-            done
-            echo "backend 探活失败"; exit 1
+      - name: 安装并重启后端（原生 ssh，幂等重试，HTTP 探活判定）
+        env:
+          HOST: ${{ secrets.SERVER_HOST }}
+          USER: ${{ secrets.SERVER_USER }}
+          KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          echo "$KEY" > /tmp/ssh_key
+          chmod 600 /tmp/ssh_key
+          # 用原生 ssh 短命令（与上传校验一致，比 ssh-action 更抗连接抖动）
+          # install 幂等：即使上次中途断开，重试时重新安装即可
+          for i in 1 2 3 4 5; do
+            echo "== 部署尝试 $i =="
+            RESULT=$(ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 \
+                "${USER}@${HOST}" 'set -e; cp /opt/blog/backend/blog-backend /opt/blog/backend/blog-backend.bak 2>/dev/null || true; install -m 0755 /opt/blog/backend/releases/blog-backend.new /opt/blog/backend/blog-backend; rm -f /opt/blog/backend/releases/blog-backend.new; /opt/blog/backend/start.sh; for j in 1 2 3 4 5 6; do sleep 3; CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health || echo 000); if [ "$CODE" = "200" ]; then echo "OK_HTTP_200"; exit 0; fi; done; echo "PROBE_FAIL"; exit 1' || echo "SSH_FAIL")
+            echo "结果: $RESULT"
+            if [[ "$RESULT" == *"OK_HTTP_200"* ]]; then
+              echo "部署成功（第 $i 次）"
+              break
+            fi
+            echo "第 $i 次失败，15 秒后重试"; sleep 15
+          done
+          if [[ "$RESULT" != *"OK_HTTP_200"* ]]; then
+            echo "部署最终失败"; exit 1
+          fi
