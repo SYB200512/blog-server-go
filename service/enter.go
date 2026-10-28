@@ -6,6 +6,7 @@ type ServiceGroup struct {
 	AuthService
 	CategoryService
 	CommentService
+	ImageService
 }
 
 // ServiceGroupApp 服务层全局单例

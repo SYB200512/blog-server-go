@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
+	"blog-backend/dao"
 	"blog-backend/global"
+	"blog-backend/model/appTypes"
+	"blog-backend/model/database"
+	"blog-backend/utils/upload"
 )
 
 // aiMessageContent DashScope 返回内容项（文生图时仅含 image）
@@ -115,17 +119,11 @@ func buildCoverPrompt(title, summary string) string {
 		title, subject)
 }
 
-// saveCover 把生成的图片下载保存到本地 covers 目录，返回相对访问路径
+// saveCover 把生成的图片保存到当前配置的存储（本地目录或 COS），
+// 同时写入图片台账（分类：封面），返回可访问的 URL
 func saveCover(srcURL string) (string, error) {
-	dir := global.Config.AI.CoversDir
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-
-	filename := fmt.Sprintf("cover_%d.png", time.Now().UnixNano())
-	dst := filepath.Join(dir, filename)
-
-	resp, err := http.Get(srcURL)
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Get(srcURL)
 	if err != nil {
 		return "", fmt.Errorf("下载封面失败: %w", err)
 	}
@@ -133,13 +131,25 @@ func saveCover(srcURL string) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("下载封面状态码 %d", resp.StatusCode)
 	}
-	out, err := os.Create(dst)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("读取封面数据失败: %w", err)
 	}
-	defer out.Close()
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		return "", err
+
+	filename := fmt.Sprintf("cover_%d.png", time.Now().UnixNano())
+	url, key, err := upload.NewOss().UploadBytes(data, filename)
+	if err != nil {
+		return "", fmt.Errorf("保存封面失败: %w", err)
 	}
-	return "/api/v1/covers/" + filename, nil
+
+	if err := dao.CreateImage(&database.Image{
+		Name:     key,
+		URL:      url,
+		Category: appTypes.Cover,
+		Storage:  upload.CurrentStorage(),
+		Size:     int64(len(data)),
+	}); err != nil {
+		global.Log.Warn("写入封面图片台账失败", zap.String("url", url), zap.Error(err))
+	}
+	return url, nil
 }

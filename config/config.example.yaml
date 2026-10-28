@@ -4,6 +4,7 @@
 #   DB_HOST / DB_PORT / DB_USER / DB_NAME / DB_PASSWORD
 #   JWT_SECRET
 #   DASHSCOPE_API_KEY / DASHSCOPE_BASE / COVERS_DIR
+#   STORAGE_TYPE / COS_SECRET_ID / COS_SECRET_KEY / COS_BUCKET / COS_REGION / COS_DOMAIN / COS_PREFIX
 server:
   port: 8080
   mode: debug # debug / release
@@ -26,6 +27,18 @@ ai:
   dashscope_api_key: ""   # ← 用环境变量 DASHSCOPE_API_KEY 注入
   dashscope_base: "https://dashscope.aliyuncs.com"
   covers_dir: "./covers"  # AI 生成的封面图存储目录
+
+# 图片存储：local 存本地 covers 目录，cos 存腾讯云对象存储
+storage:
+  type: local             # local / cos
+  max_size: 5             # 单张图片大小上限（MB）
+  cos:
+    secret_id: ""         # ← 环境变量 COS_SECRET_ID
+    secret_key: ""        # ← 环境变量 COS_SECRET_KEY
+    bucket: ""            # ← 环境变量 COS_BUCKET，如 glog-picture-1476699112
+    region: ""            # ← 环境变量 COS_REGION，如 ap-guangzhou
+    domain: ""            # ← 环境变量 COS_DOMAIN，自定义域名，留空用默认域名
+    prefix: "blog"        # ← 环境变量 COS_PREFIX，对象键前缀
 
 log:
   level: debug # debug / info / warn / error

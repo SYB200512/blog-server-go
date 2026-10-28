@@ -7,6 +7,7 @@ type RouterGroup struct {
 	CategoryRouter
 	CommentRouter
 	CoverRouter
+	ImageRouter
 }
 
 // RouterGroupApp 路由层全局单例

@@ -92,6 +92,8 @@ func (s *ArticleService) CreateArticle(req *request.ArticleCreateRequest) (*data
 		global.Log.Error("创建文章失败", zap.String("title", article.Title), zap.Error(err))
 		return nil, err
 	}
+	// 回写图片台账分类：封面 / 正文插图
+	ServiceGroupApp.ImageService.MarkArticleImages(article.Cover, article.Content)
 	// 发布且未指定封面时，异步生成封面并回写（不阻塞发布）
 	if article.Status == 1 && article.Cover == "" {
 		s.generateCoverAsync(article.ID, article.Title, article.Summary)
@@ -159,6 +161,8 @@ func (s *ArticleService) UpdateArticle(id uint64, req *request.ArticleUpdateRequ
 		global.Log.Error("更新文章失败", zap.Uint64("article_id", id), zap.Error(err))
 		return nil, err
 	}
+	// 回写图片台账分类：封面 / 正文插图
+	ServiceGroupApp.ImageService.MarkArticleImages(article.Cover, article.Content)
 	return article, nil
 }
 

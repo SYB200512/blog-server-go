@@ -9,6 +9,7 @@ type ApiGroup struct {
 	CategoryApi
 	CommentApi
 	CoverApi
+	ImageApi
 }
 
 // ApiGroupApp 接口层全局单例
@@ -20,4 +21,5 @@ var (
 	authService     = service.ServiceGroupApp.AuthService
 	categoryService = service.ServiceGroupApp.CategoryService
 	commentService  = service.ServiceGroupApp.CommentService
+	imageService    = service.ServiceGroupApp.ImageService
 )

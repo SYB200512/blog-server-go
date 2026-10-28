@@ -46,6 +46,12 @@ func applyDefaults(cfg *config.Config) {
 	if cfg.AI.CoversDir == "" {
 		cfg.AI.CoversDir = "./covers"
 	}
+	if cfg.Storage.Type == "" {
+		cfg.Storage.Type = "local"
+	}
+	if cfg.Storage.MaxSize == 0 {
+		cfg.Storage.MaxSize = 5
+	}
 	if cfg.Log.Level == "" {
 		cfg.Log.Level = "info"
 	}
@@ -94,5 +100,27 @@ func overrideWithEnv(cfg *config.Config) {
 	}
 	if dir := os.Getenv("COVERS_DIR"); dir != "" {
 		cfg.AI.CoversDir = dir
+	}
+	// 图片存储：local / cos，COS 凭据只用环境变量注入
+	if t := os.Getenv("STORAGE_TYPE"); t != "" {
+		cfg.Storage.Type = t
+	}
+	if id := os.Getenv("COS_SECRET_ID"); id != "" {
+		cfg.Storage.Cos.SecretID = id
+	}
+	if key := os.Getenv("COS_SECRET_KEY"); key != "" {
+		cfg.Storage.Cos.SecretKey = key
+	}
+	if bucket := os.Getenv("COS_BUCKET"); bucket != "" {
+		cfg.Storage.Cos.Bucket = bucket
+	}
+	if region := os.Getenv("COS_REGION"); region != "" {
+		cfg.Storage.Cos.Region = region
+	}
+	if domain := os.Getenv("COS_DOMAIN"); domain != "" {
+		cfg.Storage.Cos.Domain = domain
+	}
+	if prefix := os.Getenv("COS_PREFIX"); prefix != "" {
+		cfg.Storage.Cos.Prefix = prefix
 	}
 }

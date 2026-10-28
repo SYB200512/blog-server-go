@@ -8,6 +8,7 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	JWT      JWTConfig      `yaml:"jwt"`
 	AI       AIConfig       `yaml:"ai"`
+	Storage  StorageConfig  `yaml:"storage"`
 	Log      ZapConfig      `yaml:"log"`
 }
 
@@ -36,6 +37,23 @@ type AIConfig struct {
 	DashScopeAPIKey string `yaml:"dashscope_api_key"`
 	DashScopeBase   string `yaml:"dashscope_base"`
 	CoversDir       string `yaml:"covers_dir"`
+}
+
+// StorageConfig 图片存储配置：type 决定使用本地目录还是对象存储
+type StorageConfig struct {
+	Type    string    `yaml:"type"`     // local / cos
+	MaxSize int       `yaml:"max_size"` // 单张图片大小上限（MB）
+	Cos     CosConfig `yaml:"cos"`
+}
+
+// CosConfig 腾讯云对象存储配置
+type CosConfig struct {
+	SecretID  string `yaml:"secret_id"`
+	SecretKey string `yaml:"secret_key"`
+	Bucket    string `yaml:"bucket"` // 存储桶名称，如 glog-picture-1250000000
+	Region    string `yaml:"region"` // 地域，如 ap-guangzhou
+	Domain    string `yaml:"domain"` // 自定义访问域名，留空则用默认域名
+	Prefix    string `yaml:"prefix"` // 对象键前缀，如 blog/
 }
 
 // ZapConfig zap 日志配置（参考 go-blog 项目）
