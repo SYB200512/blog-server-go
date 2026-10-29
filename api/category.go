@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"blog-backend/model/database"
 	"blog-backend/model/request"
 	"blog-backend/model/response"
 )
@@ -24,6 +25,9 @@ func (a *CategoryApi) ListCategories(c *gin.Context) {
 	if err != nil {
 		response.ServerError(c, err)
 		return
+	}
+	if categories == nil {
+		categories = []database.Category{}
 	}
 	response.Success(c, categories)
 }
@@ -119,6 +123,9 @@ func (a *CategoryApi) ListTags(c *gin.Context) {
 	if err != nil {
 		response.ServerError(c, err)
 		return
+	}
+	if tags == nil {
+		tags = []database.Tag{}
 	}
 	response.Success(c, tags)
 }
