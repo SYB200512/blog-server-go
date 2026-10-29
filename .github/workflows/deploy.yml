@@ -29,6 +29,9 @@ jobs:
       - name: 交叉编译 Linux 二进制（去除调试符号减小体积）
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o blog-backend .
 
+      - name: 压缩二进制（减小跨境传输体积，约 33MB -> 12MB）
+        run: gzip -9 -c blog-backend > blog-backend.gz && ls -lh blog-backend blog-backend.gz
+
       - name: 上传二进制到服务器（以服务器端文件校验为准）
         env:
           HOST: ${{ secrets.SERVER_HOST }}
@@ -39,15 +42,15 @@ jobs:
           chmod 600 /tmp/ssh_key
           # 国内网络下 scp 退出码不可靠：文件传完后连接可能迟迟不关闭导致误报失败。
           # 因此忽略 scp 退出码，改用服务器端 stat 校验文件大小，一致才算成功。
-          LOCAL_SIZE=$(stat -c %s blog-backend)
+          LOCAL_SIZE=$(stat -c %s blog-backend.gz)
           for i in 1 2 3 4 5; do
             echo "== 上传尝试 $i（本地 $LOCAL_SIZE 字节）=="
-            scp -C -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            scp -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                 -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 \
-                blog-backend "${USER}@${HOST}:/opt/blog/backend/releases/blog-backend.new" || true
+                blog-backend.gz "${USER}@${HOST}:/opt/blog/backend/releases/blog-backend.new.gz" || true
             REMOTE_SIZE=$(ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                 -o ConnectTimeout=30 "${USER}@${HOST}" \
-                "stat -c %s /opt/blog/backend/releases/blog-backend.new 2>/dev/null" || echo 0)
+                "stat -c %s /opt/blog/backend/releases/blog-backend.new.gz 2>/dev/null" || echo 0)
             echo "远程大小: ${REMOTE_SIZE:-0}"
             if [ "$LOCAL_SIZE" = "${REMOTE_SIZE:-0}" ]; then
               echo "上传校验通过（第 $i 次）"
@@ -97,11 +100,12 @@ jobs:
           chmod 600 /tmp/ssh_key
           # 用原生 ssh 短命令（与上传校验一致，比 ssh-action 更抗连接抖动）
           # install 幂等：即使上次中途断开，重试时重新安装即可
+          # 二进制以 gz 形式传输，安装前先 gzip -t 校验完整性再解压覆盖
           for i in 1 2 3 4 5; do
             echo "== 部署尝试 $i =="
             RESULT=$(ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                 -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 \
-                "${USER}@${HOST}" 'set -e; cp /opt/blog/backend/blog-backend /opt/blog/backend/blog-backend.bak 2>/dev/null || true; install -m 0755 /opt/blog/backend/releases/blog-backend.new /opt/blog/backend/blog-backend; rm -f /opt/blog/backend/releases/blog-backend.new; install -m 0755 /tmp/blog_start.sh /opt/blog/backend/start.sh; /opt/blog/backend/start.sh; for j in 1 2 3 4 5 6; do sleep 3; CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health || echo 000); if [ "$CODE" = "200" ]; then echo "OK_HTTP_200"; exit 0; fi; done; echo "PROBE_FAIL"; exit 1' || echo "SSH_FAIL")
+                "${USER}@${HOST}" 'set -e; cd /opt/blog/backend; cp -f blog-backend blog-backend.bak 2>/dev/null || true; gzip -t releases/blog-backend.new.gz; gunzip -cf releases/blog-backend.new.gz > releases/binary.tmp; install -m 0755 releases/binary.tmp blog-backend; rm -f releases/binary.tmp releases/blog-backend.new.gz; install -m 0755 /tmp/blog_start.sh start.sh; ./start.sh; for j in 1 2 3 4 5 6; do sleep 3; CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health || echo 000); if [ "$CODE" = "200" ]; then echo "OK_HTTP_200"; exit 0; fi; done; echo "PROBE_FAIL"; exit 1' || echo "SSH_FAIL")
             echo "结果: $RESULT"
             if [[ "$RESULT" == *"OK_HTTP_200"* ]]; then
               echo "部署成功（第 $i 次）"
