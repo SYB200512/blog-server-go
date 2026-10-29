@@ -24,7 +24,7 @@ type aiMessageContent struct {
 	Text  string `json:"text,omitempty"`
 }
 
-// generateArticleCover 调用 Qwen-Image 按文章标题/摘要生成封面，
+// generateArticleCover 调用 Z-Image-Turbo 按文章标题/摘要生成封面，
 // 下载保存到本地 covers 目录，返回可访问的相对路径（如 /api/v1/covers/cover_xxx.png）。
 // 未配置 DASHSCOPE_API_KEY 时返回空串，由调用方决定是否兜底。
 func generateArticleCover(title, summary string) (string, error) {
@@ -34,7 +34,7 @@ func generateArticleCover(title, summary string) (string, error) {
 	}
 
 	payload := map[string]any{
-		"model": "qwen-image-3.0",
+		"model": "z-image-turbo",
 		"input": map[string]any{
 			"messages": []map[string]any{
 				{"role": "user", "content": []map[string]any{
@@ -44,7 +44,6 @@ func generateArticleCover(title, summary string) (string, error) {
 		},
 		"parameters": map[string]any{
 			"prompt_extend": true,
-			"watermark":     false,
 			"size":          "1472*1104",
 		},
 	}
