@@ -1,7 +1,9 @@
 package service
 
 import (
+	"context"
 	"errors"
+	"time"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -17,11 +19,11 @@ import (
 type ArticleService struct{}
 
 // ListArticles 前台文章列表
-func (s *ArticleService) ListArticles(q *request.ArticleQuery) (*response.PageResult, error) {
+func (s *ArticleService) ListArticles(ctx context.Context, q *request.ArticleQuery) (*response.PageResult, error) {
 	p := &request.PageParams{Page: q.Page, PageSize: q.PageSize}
 	p.Normalize()
 
-	articles, total, err := dao.ListArticles(p, q.Keyword, q.CategoryID, q.TagID, nil, false)
+	articles, total, err := dao.ListArticles(ctx, p, q.Keyword, q.CategoryID, q.TagID, nil, false)
 	if err != nil {
 		global.Log.Error("查询前台文章列表失败", zap.Error(err))
 		return nil, err
@@ -30,11 +32,11 @@ func (s *ArticleService) ListArticles(q *request.ArticleQuery) (*response.PageRe
 }
 
 // AdminListArticles 后台文章列表
-func (s *ArticleService) AdminListArticles(q *request.ArticleQuery) (*response.PageResult, error) {
+func (s *ArticleService) AdminListArticles(ctx context.Context, q *request.ArticleQuery) (*response.PageResult, error) {
 	p := &request.PageParams{Page: q.Page, PageSize: q.PageSize}
 	p.Normalize()
 
-	articles, total, err := dao.ListArticles(p, q.Keyword, q.CategoryID, q.TagID, q.Status, true)
+	articles, total, err := dao.ListArticles(ctx, p, q.Keyword, q.CategoryID, q.TagID, q.Status, true)
 	if err != nil {
 		global.Log.Error("查询后台文章列表失败", zap.Error(err))
 		return nil, err
@@ -43,8 +45,8 @@ func (s *ArticleService) AdminListArticles(q *request.ArticleQuery) (*response.P
 }
 
 // GetArticle 前台文章详情（浏览量 +1）
-func (s *ArticleService) GetArticle(id uint64) (*database.Article, error) {
-	article, err := dao.GetPublishedArticleByID(id)
+func (s *ArticleService) GetArticle(ctx context.Context, id uint64) (*database.Article, error) {
+	article, err := dao.GetPublishedArticleByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			global.Log.Warn("前台文章不存在", zap.Uint64("article_id", id))
@@ -54,14 +56,14 @@ func (s *ArticleService) GetArticle(id uint64) (*database.Article, error) {
 		return nil, err
 	}
 	// 异步/忽略错误地增加浏览量
-	_ = dao.IncrementViews(id)
+	_ = dao.IncrementViews(ctx, id)
 	article.Views++
 	return article, nil
 }
 
 // AdminGetArticle 后台文章详情
-func (s *ArticleService) AdminGetArticle(id uint64) (*database.Article, error) {
-	article, err := dao.GetArticleByID(id)
+func (s *ArticleService) AdminGetArticle(ctx context.Context, id uint64) (*database.Article, error) {
+	article, err := dao.GetArticleByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			global.Log.Warn("后台文章不存在", zap.Uint64("article_id", id))
@@ -74,7 +76,7 @@ func (s *ArticleService) AdminGetArticle(id uint64) (*database.Article, error) {
 }
 
 // CreateArticle 创建文章
-func (s *ArticleService) CreateArticle(req *request.ArticleCreateRequest) (*database.Article, error) {
+func (s *ArticleService) CreateArticle(ctx context.Context, req *request.ArticleCreateRequest) (*database.Article, error) {
 	article := &database.Article{
 		Title:      req.Title,
 		Summary:    req.Summary,
@@ -88,12 +90,12 @@ func (s *ArticleService) CreateArticle(req *request.ArticleCreateRequest) (*data
 	if article.Status != 0 {
 		article.Status = 1
 	}
-	if err := dao.CreateArticle(article, req.TagIDs); err != nil {
+	if err := dao.CreateArticle(ctx, article, req.TagIDs); err != nil {
 		global.Log.Error("创建文章失败", zap.String("title", article.Title), zap.Error(err))
 		return nil, err
 	}
 	// 回写图片台账分类：封面 / 正文插图
-	ServiceGroupApp.ImageService.MarkArticleImages(article.Cover, article.Content)
+	ServiceGroupApp.ImageService.MarkArticleImages(ctx, article.Cover, article.Content)
 	// 发布且未指定封面时，异步生成封面并回写（不阻塞发布）
 	if article.Status == 1 && article.Cover == "" {
 		s.generateCoverAsync(article.ID, article.Title, article.Summary)
@@ -101,15 +103,27 @@ func (s *ArticleService) CreateArticle(req *request.ArticleCreateRequest) (*data
 	return article, nil
 }
 
-// generateCoverAsync 后台协程生成封面，成功后回写 cover 字段
+// generateCoverAsync 后台协程生成封面，成功后回写 cover 字段。
+// 这里刻意使用 context.Background() 而不是请求的 ctx：
+// 用户发布文章后可能立刻关闭页面，请求 ctx 会被取消，但封面生成属于
+// 后台任务，必须独立于请求生命周期，因此自己派生一个超时预算。
 func (s *ArticleService) generateCoverAsync(id uint64, title, summary string) {
+	// 异步任务独立于请求生命周期，用户断开后仍需完成
+	timeout := 90 * time.Second
+	if global.Config.AI.CoverTimeout > 0 {
+		timeout = time.Duration(global.Config.AI.CoverTimeout) * time.Second
+	}
 	go func() {
+		// 先建 ctx 再 defer cancel，保证协程退出时释放定时器
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		// recover 必须放在 goroutine 边界，否则一次 panic 会带崩整个进程
 		defer func() {
 			if r := recover(); r != nil {
 				global.Log.Error("生成封面协程 panic", zap.Any("error", r), zap.Uint64("article_id", id))
 			}
 		}()
-		cover, err := generateArticleCover(title, summary)
+		cover, err := generateArticleCover(ctx, title, summary)
 		if err != nil {
 			global.Log.Error("自动生成封面失败（异步）", zap.Uint64("article_id", id), zap.Error(err))
 			return
@@ -117,7 +131,7 @@ func (s *ArticleService) generateCoverAsync(id uint64, title, summary string) {
 		if cover == "" {
 			return
 		}
-		if err := dao.UpdateArticleCover(id, cover); err != nil {
+		if err := dao.UpdateArticleCover(ctx, id, cover); err != nil {
 			global.Log.Error("回写封面失败", zap.Uint64("article_id", id), zap.Error(err))
 		} else {
 			global.Log.Info("文章封面已生成", zap.Uint64("article_id", id), zap.String("cover", cover))
@@ -126,8 +140,8 @@ func (s *ArticleService) generateCoverAsync(id uint64, title, summary string) {
 }
 
 // UpdateArticle 更新文章
-func (s *ArticleService) UpdateArticle(id uint64, req *request.ArticleUpdateRequest) (*database.Article, error) {
-	article, err := dao.GetArticleByID(id)
+func (s *ArticleService) UpdateArticle(ctx context.Context, id uint64, req *request.ArticleUpdateRequest) (*database.Article, error) {
+	article, err := dao.GetArticleByID(ctx, id)
 	if err != nil {
 		global.Log.Warn("更新文章时文章不存在", zap.Uint64("article_id", id))
 		return nil, errors.New("文章不存在")
@@ -157,22 +171,22 @@ func (s *ArticleService) UpdateArticle(id uint64, req *request.ArticleUpdateRequ
 	if article.Status == 1 && article.Cover == "" {
 		s.generateCoverAsync(article.ID, article.Title, article.Summary)
 	}
-	if err := dao.UpdateArticle(article, req.TagIDs); err != nil {
+	if err := dao.UpdateArticle(ctx, article, req.TagIDs); err != nil {
 		global.Log.Error("更新文章失败", zap.Uint64("article_id", id), zap.Error(err))
 		return nil, err
 	}
 	// 回写图片台账分类：封面 / 正文插图
-	ServiceGroupApp.ImageService.MarkArticleImages(article.Cover, article.Content)
+	ServiceGroupApp.ImageService.MarkArticleImages(ctx, article.Cover, article.Content)
 	return article, nil
 }
 
 // DeleteArticle 删除文章（软删除）
-func (s *ArticleService) DeleteArticle(id uint64) error {
-	if _, err := dao.GetArticleByID(id); err != nil {
+func (s *ArticleService) DeleteArticle(ctx context.Context, id uint64) error {
+	if _, err := dao.GetArticleByID(ctx, id); err != nil {
 		global.Log.Warn("删除文章时文章不存在", zap.Uint64("article_id", id))
 		return errors.New("文章不存在")
 	}
-	if err := dao.DeleteArticle(id); err != nil {
+	if err := dao.DeleteArticle(ctx, id); err != nil {
 		global.Log.Error("删除文章失败", zap.Uint64("article_id", id), zap.Error(err))
 		return err
 	}
@@ -180,8 +194,8 @@ func (s *ArticleService) DeleteArticle(id uint64) error {
 }
 
 // Archive 时间归档
-func (s *ArticleService) Archive() (map[string][]database.Article, error) {
-	result, err := dao.ArchiveByMonth()
+func (s *ArticleService) Archive(ctx context.Context) (map[string][]database.Article, error) {
+	result, err := dao.ArchiveByMonth(ctx)
 	if err != nil {
 		global.Log.Error("查询时间归档失败", zap.Error(err))
 		return nil, err

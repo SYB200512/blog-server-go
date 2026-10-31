@@ -1,6 +1,8 @@
 package dao
 
 import (
+	"context"
+
 	"blog-backend/global"
 	"blog-backend/model/database"
 	"blog-backend/model/request"
@@ -9,9 +11,9 @@ import (
 )
 
 // CountArticles 统计文章数量
-func CountArticles(status *int8) (int64, error) {
+func CountArticles(ctx context.Context, status *int8) (int64, error) {
 	var count int64
-	query := global.DB.Model(&database.Article{})
+	query := global.DB.WithContext(ctx).Model(&database.Article{})
 	if status != nil {
 		query = query.Where("status = ?", *status)
 	}
@@ -20,10 +22,11 @@ func CountArticles(status *int8) (int64, error) {
 }
 
 // ListArticles 文章分页列表
-// status 为空则不过滤状态；admin 表示是否后台查询（后台返回草稿）
-func ListArticles(p *request.PageParams, keyword string, categoryID, tagID uint64, status *int8, admin bool) ([]database.Article, int64, error) {
+// status 为空则不过滤状态；admin 表示是否后台查询（后台返回草稿）。
+// WithContext(ctx)：SQL 继承请求的取消与超时，客户端断开时会中断查询。
+func ListArticles(ctx context.Context, p *request.PageParams, keyword string, categoryID, tagID uint64, status *int8, admin bool) ([]database.Article, int64, error) {
 	var articles []database.Article
-	query := global.DB.Model(&database.Article{})
+	query := global.DB.WithContext(ctx).Model(&database.Article{})
 
 	if keyword != "" {
 		like := "%" + keyword + "%"
@@ -57,9 +60,9 @@ func ListArticles(p *request.PageParams, keyword string, categoryID, tagID uint6
 }
 
 // GetArticleByID 根据 ID 查询文章（含关联）
-func GetArticleByID(id uint64) (*database.Article, error) {
+func GetArticleByID(ctx context.Context, id uint64) (*database.Article, error) {
 	var article database.Article
-	err := global.DB.Preload("Category").Preload("Tags").
+	err := global.DB.WithContext(ctx).Preload("Category").Preload("Tags").
 		Where("id = ?", id).First(&article).Error
 	if err != nil {
 		return nil, err
@@ -68,9 +71,9 @@ func GetArticleByID(id uint64) (*database.Article, error) {
 }
 
 // GetPublishedArticleByID 查询已发布文章
-func GetPublishedArticleByID(id uint64) (*database.Article, error) {
+func GetPublishedArticleByID(ctx context.Context, id uint64) (*database.Article, error) {
 	var article database.Article
-	err := global.DB.Preload("Category").Preload("Tags").
+	err := global.DB.WithContext(ctx).Preload("Category").Preload("Tags").
 		Where("id = ? AND status = 1", id).First(&article).Error
 	if err != nil {
 		return nil, err
@@ -79,8 +82,8 @@ func GetPublishedArticleByID(id uint64) (*database.Article, error) {
 }
 
 // CreateArticle 创建文章
-func CreateArticle(article *database.Article, tagIDs []uint64) error {
-	return global.DB.Transaction(func(tx *gorm.DB) error {
+func CreateArticle(ctx context.Context, article *database.Article, tagIDs []uint64) error {
+	return global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(article).Error; err != nil {
 			return err
 		}
@@ -98,8 +101,8 @@ func CreateArticle(article *database.Article, tagIDs []uint64) error {
 }
 
 // UpdateArticle 更新文章及标签
-func UpdateArticle(article *database.Article, tagIDs []uint64) error {
-	return global.DB.Transaction(func(tx *gorm.DB) error {
+func UpdateArticle(ctx context.Context, article *database.Article, tagIDs []uint64) error {
+	return global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Save(article).Error; err != nil {
 			return err
 		}
@@ -119,34 +122,34 @@ func UpdateArticle(article *database.Article, tagIDs []uint64) error {
 }
 
 // DeleteArticle 软删除文章
-func DeleteArticle(id uint64) error {
-	return global.DB.Delete(&database.Article{}, id).Error
+func DeleteArticle(ctx context.Context, id uint64) error {
+	return global.DB.WithContext(ctx).Delete(&database.Article{}, id).Error
 }
 
 // UpdateArticleCover 异步生成封面完成后，仅回写 cover 字段
-func UpdateArticleCover(id uint64, cover string) error {
-	return global.DB.Model(&database.Article{}).Where("id = ?", id).
+func UpdateArticleCover(ctx context.Context, id uint64, cover string) error {
+	return global.DB.WithContext(ctx).Model(&database.Article{}).Where("id = ?", id).
 		UpdateColumn("cover", cover).Error
 }
 
 // IncrementViews 浏览量 +1
-func IncrementViews(id uint64) error {
-	return global.DB.Model(&database.Article{}).Where("id = ?", id).
+func IncrementViews(ctx context.Context, id uint64) error {
+	return global.DB.WithContext(ctx).Model(&database.Article{}).Where("id = ?", id).
 		UpdateColumn("views", gorm.Expr("views + 1")).Error
 }
 
 // ListTopArticles 置顶文章列表
-func ListTopArticles() ([]database.Article, error) {
+func ListTopArticles(ctx context.Context) ([]database.Article, error) {
 	var articles []database.Article
-	err := global.DB.Where("status = 1 AND is_top = 1").
+	err := global.DB.WithContext(ctx).Where("status = 1 AND is_top = 1").
 		Order("created_at DESC").Find(&articles).Error
 	return articles, err
 }
 
 // ArchiveByMonth 按月归档已发布文章（返回格式：2026-08 等）
-func ArchiveByMonth() (map[string][]database.Article, error) {
+func ArchiveByMonth(ctx context.Context) (map[string][]database.Article, error) {
 	var articles []database.Article
-	err := global.DB.Where("status = 1").
+	err := global.DB.WithContext(ctx).Where("status = 1").
 		Order("created_at DESC").
 		Find(&articles).Error
 	if err != nil {

@@ -1,15 +1,17 @@
 package dao
 
 import (
+	"context"
+
 	"blog-backend/global"
 	"blog-backend/model/database"
 	"blog-backend/model/request"
 )
 
 // ListComments 评论分页列表（后台管理用）
-func ListComments(p *request.PageParams, articleID uint64, status *int8) ([]database.Comment, int64, error) {
+func ListComments(ctx context.Context, p *request.PageParams, articleID uint64, status *int8) ([]database.Comment, int64, error) {
 	var comments []database.Comment
-	query := global.DB.Model(&database.Comment{})
+	query := global.DB.WithContext(ctx).Model(&database.Comment{})
 
 	if articleID > 0 {
 		query = query.Where("article_id = ?", articleID)
@@ -31,9 +33,9 @@ func ListComments(p *request.PageParams, articleID uint64, status *int8) ([]data
 }
 
 // ListCommentsByArticle 前台：查询文章的已通过评论（顶层 + 回复）
-func ListCommentsByArticle(articleID uint64) ([]database.Comment, error) {
+func ListCommentsByArticle(ctx context.Context, articleID uint64) ([]database.Comment, error) {
 	var comments []database.Comment
-	err := global.DB.Preload("User").
+	err := global.DB.WithContext(ctx).Preload("User").
 		Where("article_id = ? AND status = 1", articleID).
 		Order("created_at ASC").
 		Find(&comments).Error
@@ -41,20 +43,20 @@ func ListCommentsByArticle(articleID uint64) ([]database.Comment, error) {
 }
 
 // CreateComment 创建评论
-func CreateComment(comment *database.Comment) error {
-	return global.DB.Create(comment).Error
+func CreateComment(ctx context.Context, comment *database.Comment) error {
+	return global.DB.WithContext(ctx).Create(comment).Error
 }
 
 // UpdateCommentStatus 更新评论状态（审核通过/删除）
-func UpdateCommentStatus(id uint64, status int8) error {
-	return global.DB.Model(&database.Comment{}).Where("id = ?", id).
+func UpdateCommentStatus(ctx context.Context, id uint64, status int8) error {
+	return global.DB.WithContext(ctx).Model(&database.Comment{}).Where("id = ?", id).
 		Update("status", status).Error
 }
 
 // CountComments 评论总数
-func CountComments(status *int8) (int64, error) {
+func CountComments(ctx context.Context, status *int8) (int64, error) {
 	var count int64
-	query := global.DB.Model(&database.Comment{})
+	query := global.DB.WithContext(ctx).Model(&database.Comment{})
 	if status != nil {
 		query = query.Where("status = ?", *status)
 	}

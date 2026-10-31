@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,8 +27,9 @@ type aiMessageContent struct {
 
 // generateArticleCover 调用 Z-Image-Turbo 按文章标题/摘要生成封面，
 // 下载保存到本地 covers 目录，返回可访问的相对路径（如 /api/v1/covers/cover_xxx.png）。
+// ctx 用于取消请求与下载：调用方（异步任务）自己控制超时预算。
 // 未配置 DASHSCOPE_API_KEY 时返回空串，由调用方决定是否兜底。
-func generateArticleCover(title, summary string) (string, error) {
+func generateArticleCover(ctx context.Context, title, summary string) (string, error) {
 	cfg := global.Config
 	if cfg == nil || cfg.AI.DashScopeAPIKey == "" {
 		return "", nil
@@ -55,7 +57,7 @@ func generateArticleCover(title, summary string) (string, error) {
 	url := strings.TrimRight(cfg.AI.DashScopeBase, "/") +
 		"/api/v1/services/aigc/multimodal-generation/generation"
 
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
@@ -104,7 +106,7 @@ func generateArticleCover(title, summary string) (string, error) {
 	if imageURL == "" {
 		return "", fmt.Errorf("文生图结果中未找到图片 URL")
 	}
-	return saveCover(imageURL)
+	return saveCover(ctx, imageURL)
 }
 
 // buildCoverPrompt 根据标题与摘要拼接文生图提示词
@@ -120,9 +122,13 @@ func buildCoverPrompt(title, summary string) string {
 
 // saveCover 把生成的图片保存到当前配置的存储（本地目录或 COS），
 // 同时写入图片台账（分类：封面），返回可访问的 URL
-func saveCover(srcURL string) (string, error) {
+func saveCover(ctx context.Context, srcURL string) (string, error) {
 	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Get(srcURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srcURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("构造封面下载请求失败: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("下载封面失败: %w", err)
 	}
@@ -136,12 +142,12 @@ func saveCover(srcURL string) (string, error) {
 	}
 
 	filename := fmt.Sprintf("cover_%d.png", time.Now().UnixNano())
-	url, key, err := upload.NewOss().UploadBytes(data, filename)
+	url, key, err := upload.NewOss().UploadBytes(ctx, data, filename)
 	if err != nil {
 		return "", fmt.Errorf("保存封面失败: %w", err)
 	}
 
-	if err := dao.CreateImage(&database.Image{
+	if err := dao.CreateImage(ctx, &database.Image{
 		Name:     key,
 		URL:      url,
 		Category: appTypes.Cover,

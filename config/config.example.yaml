@@ -8,6 +8,8 @@
 server:
   port: 8080
   mode: debug # debug / release
+  request_timeout: 10 # 单请求处理预算（秒）
+  shutdown_timeout: 15 # 优雅停机等待时间（秒）
 
 database:
   host: 127.0.0.1
@@ -27,6 +29,7 @@ ai:
   dashscope_api_key: ""   # ← 用环境变量 DASHSCOPE_API_KEY 注入
   dashscope_base: "https://dashscope.aliyuncs.com"
   covers_dir: "./covers"  # AI 生成的封面图存储目录
+  cover_timeout: 90       # 异步生成封面超时（秒）
 
 # 图片存储：local 存本地 covers 目录，cos 存腾讯云对象存储
 storage:

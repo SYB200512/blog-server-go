@@ -13,8 +13,10 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port int    `yaml:"port"`
-	Mode string `yaml:"mode"`
+	Port            int    `yaml:"port"`
+	Mode            string `yaml:"mode"`
+	RequestTimeout  int    `yaml:"request_timeout"`  // 单请求处理预算（秒）
+	ShutdownTimeout int    `yaml:"shutdown_timeout"` // 优雅停机等待时间（秒）
 }
 
 type DatabaseConfig struct {
@@ -37,6 +39,7 @@ type AIConfig struct {
 	DashScopeAPIKey string `yaml:"dashscope_api_key"`
 	DashScopeBase   string `yaml:"dashscope_base"`
 	CoversDir       string `yaml:"covers_dir"`
+	CoverTimeout    int    `yaml:"cover_timeout"` // 异步生成封面超时（秒）
 }
 
 // StorageConfig 图片存储配置：type 决定使用本地目录还是对象存储

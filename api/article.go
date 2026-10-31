@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -31,9 +33,9 @@ func (a *ArticleApi) ListArticles(c *gin.Context) {
 		response.InvalidParam(c, "查询参数错误")
 		return
 	}
-	result, err := articleService.ListArticles(&q)
+	result, err := articleService.ListArticles(c.Request.Context(), &q)
 	if err != nil {
-		response.ServerError(c, err)
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, result)
@@ -54,8 +56,13 @@ func (a *ArticleApi) GetArticle(c *gin.Context) {
 		response.InvalidParam(c, "无效的文章 ID")
 		return
 	}
-	article, err := articleService.GetArticle(id)
+	// 传请求 ctx：客户端断开或请求超时会中断下方的 DB 查询
+	article, err := articleService.GetArticle(c.Request.Context(), id)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			response.FromError(c, err)
+			return
+		}
 		response.NotFound(c, err.Error())
 		return
 	}
@@ -83,9 +90,9 @@ func (a *ArticleApi) AdminListArticles(c *gin.Context) {
 		response.InvalidParam(c, "查询参数错误")
 		return
 	}
-	result, err := articleService.AdminListArticles(&q)
+	result, err := articleService.AdminListArticles(c.Request.Context(), &q)
 	if err != nil {
-		response.ServerError(c, err)
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, result)
@@ -107,8 +114,12 @@ func (a *ArticleApi) AdminGetArticle(c *gin.Context) {
 		response.InvalidParam(c, "无效的文章 ID")
 		return
 	}
-	article, err := articleService.AdminGetArticle(id)
+	article, err := articleService.AdminGetArticle(c.Request.Context(), id)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			response.FromError(c, err)
+			return
+		}
 		response.NotFound(c, err.Error())
 		return
 	}
@@ -132,9 +143,9 @@ func (a *ArticleApi) CreateArticle(c *gin.Context) {
 		response.InvalidParam(c, "标题不能为空")
 		return
 	}
-	article, err := articleService.CreateArticle(&req)
+	article, err := articleService.CreateArticle(c.Request.Context(), &req)
 	if err != nil {
-		response.ServerError(c, err)
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, article)
@@ -163,7 +174,7 @@ func (a *ArticleApi) UpdateArticle(c *gin.Context) {
 		response.InvalidParam(c, "请求体格式错误")
 		return
 	}
-	article, err := articleService.UpdateArticle(id, &req)
+	article, err := articleService.UpdateArticle(c.Request.Context(), id, &req)
 	if err != nil {
 		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
 		return
@@ -187,7 +198,7 @@ func (a *ArticleApi) DeleteArticle(c *gin.Context) {
 		response.InvalidParam(c, "无效的文章 ID")
 		return
 	}
-	if err := articleService.DeleteArticle(id); err != nil {
+	if err := articleService.DeleteArticle(c.Request.Context(), id); err != nil {
 		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
 		return
 	}
@@ -202,9 +213,9 @@ func (a *ArticleApi) DeleteArticle(c *gin.Context) {
 // @Router /api/v1/archive [get]
 // @Id article_archive
 func (a *ArticleApi) Archive(c *gin.Context) {
-	result, err := articleService.Archive()
+	result, err := articleService.Archive(c.Request.Context())
 	if err != nil {
-		response.ServerError(c, err)
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, result)

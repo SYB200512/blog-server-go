@@ -21,9 +21,9 @@ type CategoryApi struct{}
 // @Router /api/v1/categories [get]
 // @Id category_list
 func (a *CategoryApi) ListCategories(c *gin.Context) {
-	categories, err := categoryService.ListCategories()
+	categories, err := categoryService.ListCategories(c.Request.Context())
 	if err != nil {
-		response.ServerError(c, err)
+		response.FromError(c, err)
 		return
 	}
 	if categories == nil {
@@ -49,7 +49,7 @@ func (a *CategoryApi) CreateCategory(c *gin.Context) {
 		response.InvalidParam(c, "分类名不能为空")
 		return
 	}
-	category, err := categoryService.CreateCategory(&req)
+	category, err := categoryService.CreateCategory(c.Request.Context(), &req)
 	if err != nil {
 		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
 		return
@@ -80,7 +80,7 @@ func (a *CategoryApi) UpdateCategory(c *gin.Context) {
 		response.InvalidParam(c, "请求体格式错误")
 		return
 	}
-	category, err := categoryService.UpdateCategory(id, &req)
+	category, err := categoryService.UpdateCategory(c.Request.Context(), id, &req)
 	if err != nil {
 		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
 		return
@@ -104,7 +104,7 @@ func (a *CategoryApi) DeleteCategory(c *gin.Context) {
 		response.InvalidParam(c, "无效的分类 ID")
 		return
 	}
-	if err := categoryService.DeleteCategory(id); err != nil {
+	if err := categoryService.DeleteCategory(c.Request.Context(), id); err != nil {
 		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
 		return
 	}
@@ -119,9 +119,9 @@ func (a *CategoryApi) DeleteCategory(c *gin.Context) {
 // @Router /api/v1/tags [get]
 // @Id tag_list
 func (a *CategoryApi) ListTags(c *gin.Context) {
-	tags, err := categoryService.ListTags()
+	tags, err := categoryService.ListTags(c.Request.Context())
 	if err != nil {
-		response.ServerError(c, err)
+		response.FromError(c, err)
 		return
 	}
 	if tags == nil {
@@ -147,7 +147,7 @@ func (a *CategoryApi) CreateTag(c *gin.Context) {
 		response.InvalidParam(c, "标签名不能为空")
 		return
 	}
-	tag, err := categoryService.CreateTag(&req)
+	tag, err := categoryService.CreateTag(c.Request.Context(), &req)
 	if err != nil {
 		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
 		return
@@ -171,7 +171,7 @@ func (a *CategoryApi) DeleteTag(c *gin.Context) {
 		response.InvalidParam(c, "无效的标签 ID")
 		return
 	}
-	if err := categoryService.DeleteTag(id); err != nil {
+	if err := categoryService.DeleteTag(c.Request.Context(), id); err != nil {
 		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
 		return
 	}

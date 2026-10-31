@@ -26,7 +26,7 @@ func (a *AuthApi) Login(c *gin.Context) {
 		response.InvalidParam(c, "用户名和密码不能为空")
 		return
 	}
-	resp, err := authService.Login(&req)
+	resp, err := authService.Login(c.Request.Context(), &req)
 	if err != nil {
 		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
 		return
@@ -45,7 +45,7 @@ func (a *AuthApi) Login(c *gin.Context) {
 // @Id auth_profile
 func (a *AuthApi) GetProfile(c *gin.Context) {
 	userID := c.GetUint64("userID")
-	info, err := authService.GetProfile(userID)
+	info, err := authService.GetProfile(c.Request.Context(), userID)
 	if err != nil {
 		response.Fail(c, 400, response.CodeNotFound, err.Error())
 		return

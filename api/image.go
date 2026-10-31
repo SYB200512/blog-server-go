@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -36,8 +38,12 @@ func (a *ImageApi) UploadImage(c *gin.Context) {
 		category = appTypes.ToImageCategory(s)
 	}
 
-	result, err := imageService.UploadImage(header, category)
+	result, err := imageService.UploadImage(c.Request.Context(), header, category)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			response.FromError(c, err)
+			return
+		}
 		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
 		return
 	}
@@ -54,9 +60,9 @@ func (a *ImageApi) UploadImage(c *gin.Context) {
 // @Id photo_list
 func (a *ImageApi) ListPhotos(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "60"))
-	list, err := imageService.ListPhotos(limit)
+	list, err := imageService.ListPhotos(c.Request.Context(), limit)
 	if err != nil {
-		response.ServerError(c, err)
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, list)
@@ -80,9 +86,9 @@ func (a *ImageApi) ListImages(c *gin.Context) {
 		response.InvalidParam(c, "查询参数错误")
 		return
 	}
-	result, err := imageService.ListImages(&q)
+	result, err := imageService.ListImages(c.Request.Context(), &q)
 	if err != nil {
-		response.ServerError(c, err)
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, result)
@@ -104,8 +110,8 @@ func (a *ImageApi) UpdateCategory(c *gin.Context) {
 		response.InvalidParam(c, "参数错误")
 		return
 	}
-	if err := imageService.UpdateCategory(req.IDs, appTypes.ToImageCategory(req.Category)); err != nil {
-		response.ServerError(c, err)
+	if err := imageService.UpdateCategory(c.Request.Context(), req.IDs, appTypes.ToImageCategory(req.Category)); err != nil {
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, nil)
@@ -128,8 +134,8 @@ func (a *ImageApi) DeleteImages(c *gin.Context) {
 		response.InvalidParam(c, "请选择要删除的图片")
 		return
 	}
-	if err := imageService.DeleteImages(req.IDs); err != nil {
-		response.ServerError(c, err)
+	if err := imageService.DeleteImages(c.Request.Context(), req.IDs); err != nil {
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, nil)

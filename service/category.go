@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 
 	"go.uber.org/zap"
@@ -16,8 +17,8 @@ import (
 type CategoryService struct{}
 
 // ListCategories 分类列表
-func (s *CategoryService) ListCategories() ([]database.Category, error) {
-	categories, err := dao.ListCategories()
+func (s *CategoryService) ListCategories(ctx context.Context) ([]database.Category, error) {
+	categories, err := dao.ListCategories(ctx)
 	if err != nil {
 		global.Log.Error("查询分类列表失败", zap.Error(err))
 		return nil, err
@@ -26,13 +27,13 @@ func (s *CategoryService) ListCategories() ([]database.Category, error) {
 }
 
 // CreateCategory 创建分类
-func (s *CategoryService) CreateCategory(req *request.CategoryCreateRequest) (*database.Category, error) {
-	if _, err := dao.GetCategoryByName(req.Name); err == nil {
+func (s *CategoryService) CreateCategory(ctx context.Context, req *request.CategoryCreateRequest) (*database.Category, error) {
+	if _, err := dao.GetCategoryByName(ctx, req.Name); err == nil {
 		global.Log.Warn("创建分类失败：分类已存在", zap.String("name", req.Name))
 		return nil, errors.New("分类已存在")
 	}
 	category := &database.Category{Name: req.Name, Description: req.Description}
-	if err := dao.CreateCategory(category); err != nil {
+	if err := dao.CreateCategory(ctx, category); err != nil {
 		global.Log.Error("创建分类失败", zap.String("name", req.Name), zap.Error(err))
 		return nil, err
 	}
@@ -40,8 +41,8 @@ func (s *CategoryService) CreateCategory(req *request.CategoryCreateRequest) (*d
 }
 
 // UpdateCategory 更新分类
-func (s *CategoryService) UpdateCategory(id uint64, req *request.CategoryUpdateRequest) (*database.Category, error) {
-	category, err := dao.GetCategoryByID(id)
+func (s *CategoryService) UpdateCategory(ctx context.Context, id uint64, req *request.CategoryUpdateRequest) (*database.Category, error) {
+	category, err := dao.GetCategoryByID(ctx, id)
 	if err != nil {
 		global.Log.Warn("更新分类时分类不存在", zap.Uint64("category_id", id))
 		return nil, errors.New("分类不存在")
@@ -52,7 +53,7 @@ func (s *CategoryService) UpdateCategory(id uint64, req *request.CategoryUpdateR
 	if req.Description != "" {
 		category.Description = req.Description
 	}
-	if err := dao.UpdateCategory(category); err != nil {
+	if err := dao.UpdateCategory(ctx, category); err != nil {
 		global.Log.Error("更新分类失败", zap.Uint64("category_id", id), zap.Error(err))
 		return nil, err
 	}
@@ -60,8 +61,8 @@ func (s *CategoryService) UpdateCategory(id uint64, req *request.CategoryUpdateR
 }
 
 // DeleteCategory 删除分类
-func (s *CategoryService) DeleteCategory(id uint64) error {
-	if _, err := dao.GetCategoryByID(id); err != nil {
+func (s *CategoryService) DeleteCategory(ctx context.Context, id uint64) error {
+	if _, err := dao.GetCategoryByID(ctx, id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			global.Log.Warn("删除分类时分类不存在", zap.Uint64("category_id", id))
 			return errors.New("分类不存在")
@@ -69,7 +70,7 @@ func (s *CategoryService) DeleteCategory(id uint64) error {
 		global.Log.Error("删除分类时查询失败", zap.Uint64("category_id", id), zap.Error(err))
 		return err
 	}
-	if err := dao.DeleteCategory(id); err != nil {
+	if err := dao.DeleteCategory(ctx, id); err != nil {
 		global.Log.Error("删除分类失败", zap.Uint64("category_id", id), zap.Error(err))
 		return err
 	}
@@ -77,8 +78,8 @@ func (s *CategoryService) DeleteCategory(id uint64) error {
 }
 
 // ListTags 标签列表
-func (s *CategoryService) ListTags() ([]database.Tag, error) {
-	tags, err := dao.ListTags()
+func (s *CategoryService) ListTags(ctx context.Context) ([]database.Tag, error) {
+	tags, err := dao.ListTags(ctx)
 	if err != nil {
 		global.Log.Error("查询标签列表失败", zap.Error(err))
 		return nil, err
@@ -87,9 +88,9 @@ func (s *CategoryService) ListTags() ([]database.Tag, error) {
 }
 
 // CreateTag 创建标签
-func (s *CategoryService) CreateTag(req *request.TagCreateRequest) (*database.Tag, error) {
+func (s *CategoryService) CreateTag(ctx context.Context, req *request.TagCreateRequest) (*database.Tag, error) {
 	tag := &database.Tag{Name: req.Name}
-	if err := dao.CreateTag(tag); err != nil {
+	if err := dao.CreateTag(ctx, tag); err != nil {
 		global.Log.Error("创建标签失败", zap.String("name", req.Name), zap.Error(err))
 		return nil, errors.New("标签已存在或创建失败")
 	}
@@ -97,12 +98,12 @@ func (s *CategoryService) CreateTag(req *request.TagCreateRequest) (*database.Ta
 }
 
 // DeleteTag 删除标签
-func (s *CategoryService) DeleteTag(id uint64) error {
-	if _, err := dao.GetTagByID(id); err != nil {
+func (s *CategoryService) DeleteTag(ctx context.Context, id uint64) error {
+	if _, err := dao.GetTagByID(ctx, id); err != nil {
 		global.Log.Warn("删除标签时标签不存在", zap.Uint64("tag_id", id))
 		return errors.New("标签不存在")
 	}
-	if err := dao.DeleteTag(id); err != nil {
+	if err := dao.DeleteTag(ctx, id); err != nil {
 		global.Log.Error("删除标签失败", zap.Uint64("tag_id", id), zap.Error(err))
 		return err
 	}

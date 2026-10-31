@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"blog-backend/global"
+	"blog-backend/utils/traceid"
 )
 
 // GinLogger 请求访问日志中间件：记录方法、路径、状态码、耗时与请求中的错误。
@@ -28,6 +29,7 @@ func GinLogger() gin.HandlerFunc {
 
 		status := c.Writer.Status()
 		fields := []zap.Field{
+			zap.String("trace_id", traceid.From(c.Request.Context())),
 			zap.String("method", c.Request.Method),
 			zap.String("path", path),
 			zap.Int("status", status),

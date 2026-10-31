@@ -1,6 +1,11 @@
 package response
 
-import "github.com/gin-gonic/gin"
+import (
+	"context"
+	"errors"
+
+	"github.com/gin-gonic/gin"
+)
 
 // 业务状态码
 const (
@@ -32,6 +37,21 @@ func Fail(c *gin.Context, httpStatus, code int, message string) {
 // ServerError 服务器内部错误
 func ServerError(c *gin.Context, err error) {
 	c.JSON(500, Response{Code: CodeServerError, Message: "服务器内部错误", Data: nil})
+}
+
+// FromError 按错误类型返回：
+//   - DeadlineExceeded：请求预算用完，返回 504，提示超时；
+//   - Canceled：客户端已断开（如关闭页面），返回 499 且不写响应体；
+//   - 其它：按服务器内部错误返回 500。
+func FromError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		Fail(c, 504, CodeServerError, "请求处理超时")
+	case errors.Is(err, context.Canceled):
+		c.AbortWithStatus(499)
+	default:
+		ServerError(c, err)
+	}
 }
 
 // InvalidParam 参数错误

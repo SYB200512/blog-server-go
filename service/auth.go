@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 
 	"go.uber.org/zap"
@@ -18,8 +19,8 @@ import (
 type AuthService struct{}
 
 // Login 用户登录
-func (s *AuthService) Login(req *request.LoginRequest) (*response.LoginResponse, error) {
-	user, err := dao.GetUserByUsername(req.Username)
+func (s *AuthService) Login(ctx context.Context, req *request.LoginRequest) (*response.LoginResponse, error) {
+	user, err := dao.GetUserByUsername(ctx, req.Username)
 	if err != nil {
 		// 用户名不存在或查询失败，统一返回"用户名或密码错误"，避免泄露用户是否存在
 		global.Log.Warn("登录失败：用户查询错误", zap.String("username", req.Username), zap.Error(err))
@@ -43,8 +44,8 @@ func (s *AuthService) Login(req *request.LoginRequest) (*response.LoginResponse,
 }
 
 // GetProfile 获取用户信息
-func (s *AuthService) GetProfile(userID uint64) (*response.UserInfo, error) {
-	user, err := dao.GetUserByID(userID)
+func (s *AuthService) GetProfile(ctx context.Context, userID uint64) (*response.UserInfo, error) {
+	user, err := dao.GetUserByID(ctx, userID)
 	if err != nil {
 		global.Log.Warn("获取用户信息失败", zap.Uint64("user_id", userID), zap.Error(err))
 		return nil, errors.New("用户不存在")

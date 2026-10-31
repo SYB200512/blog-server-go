@@ -1,6 +1,7 @@
 package upload
 
 import (
+	"context"
 	"io"
 	"mime/multipart"
 	"os"
@@ -13,7 +14,7 @@ import (
 type Local struct{}
 
 // UploadImage 上传 multipart 文件到本地目录
-func (*Local) UploadImage(file *multipart.FileHeader) (string, string, error) {
+func (*Local) UploadImage(ctx context.Context, file *multipart.FileHeader) (string, string, error) {
 	if err := checkImage(file); err != nil {
 		return "", "", err
 	}
@@ -26,11 +27,11 @@ func (*Local) UploadImage(file *multipart.FileHeader) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	return (&Local{}).UploadBytes(data, file.Filename)
+	return (&Local{}).UploadBytes(ctx, data, file.Filename)
 }
 
 // UploadBytes 将字节写入本地 covers 目录
-func (*Local) UploadBytes(data []byte, filename string) (string, string, error) {
+func (*Local) UploadBytes(_ context.Context, data []byte, filename string) (string, string, error) {
 	dir := global.Config.AI.CoversDir
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", "", err
@@ -43,6 +44,6 @@ func (*Local) UploadBytes(data []byte, filename string) (string, string, error) 
 }
 
 // Delete 删除本地文件
-func (*Local) Delete(key string) error {
+func (*Local) Delete(_ context.Context, key string) error {
 	return os.Remove(filepath.Join(global.Config.AI.CoversDir, filepath.Base(key)))
 }

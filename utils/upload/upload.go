@@ -1,6 +1,7 @@
 package upload
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
@@ -26,14 +27,15 @@ var WhiteImageList = map[string]struct{}{
 	".webp": {},
 }
 
-// OSS 对象存储抽象：本地目录与腾讯云 COS 实现同一套接口
+// OSS 对象存储抽象：本地目录与腾讯云 COS 实现同一套接口。
+// 所有方法都接收 ctx：请求取消或超时时，底层上传/删除应立即中断。
 type OSS interface {
 	// UploadImage 上传 multipart 文件，返回访问 URL 与对象键
-	UploadImage(file *multipart.FileHeader) (url, key string, err error)
+	UploadImage(ctx context.Context, file *multipart.FileHeader) (url, key string, err error)
 	// UploadBytes 上传内存中的字节（用于 AI 生成图直接落盘/上云）
-	UploadBytes(data []byte, filename string) (url, key string, err error)
+	UploadBytes(ctx context.Context, data []byte, filename string) (url, key string, err error)
 	// Delete 按对象键删除文件
-	Delete(key string) error
+	Delete(ctx context.Context, key string) error
 }
 
 // NewOss 按当前配置的 storage.type 返回对应实现（上传时使用）

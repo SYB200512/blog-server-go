@@ -38,7 +38,7 @@ func newCosClient() (*cos.Client, error) {
 }
 
 // UploadImage 上传 multipart 文件到 COS
-func (*Cos) UploadImage(file *multipart.FileHeader) (string, string, error) {
+func (*Cos) UploadImage(ctx context.Context, file *multipart.FileHeader) (string, string, error) {
 	if err := checkImage(file); err != nil {
 		return "", "", err
 	}
@@ -51,11 +51,11 @@ func (*Cos) UploadImage(file *multipart.FileHeader) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	return (&Cos{}).UploadBytes(data, file.Filename)
+	return (&Cos{}).UploadBytes(ctx, data, file.Filename)
 }
 
 // UploadBytes 将字节上传到 COS，返回公网访问 URL 与对象键
-func (*Cos) UploadBytes(data []byte, filename string) (string, string, error) {
+func (*Cos) UploadBytes(ctx context.Context, data []byte, filename string) (string, string, error) {
 	client, err := newCosClient()
 	if err != nil {
 		return "", "", err
@@ -67,11 +67,9 @@ func (*Cos) UploadBytes(data []byte, filename string) (string, string, error) {
 	}
 	key += buildObjectName(filename)
 
-	ctx := context.Background()
 	if _, err := client.Object.Put(ctx, key, bytes.NewReader(data), nil); err != nil {
 		return "", "", err
 	}
-
 	if domain := strings.TrimRight(cfg.Domain, "/"); domain != "" {
 		if !strings.HasPrefix(domain, "http") {
 			domain = "https://" + domain
@@ -82,11 +80,11 @@ func (*Cos) UploadBytes(data []byte, filename string) (string, string, error) {
 }
 
 // Delete 按对象键删除 COS 文件
-func (*Cos) Delete(key string) error {
+func (*Cos) Delete(ctx context.Context, key string) error {
 	client, err := newCosClient()
 	if err != nil {
 		return err
 	}
-	_, err = client.Object.Delete(context.Background(), key)
+	_, err = client.Object.Delete(ctx, key)
 	return err
 }

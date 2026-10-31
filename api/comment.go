@@ -27,9 +27,9 @@ func (a *CommentApi) ListCommentsByArticle(c *gin.Context) {
 		response.InvalidParam(c, "无效的文章 ID")
 		return
 	}
-	comments, err := commentService.ListCommentsByArticle(articleID)
+	comments, err := commentService.ListCommentsByArticle(c.Request.Context(), articleID)
 	if err != nil {
-		response.ServerError(c, err)
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, comments)
@@ -63,7 +63,7 @@ func (a *CommentApi) CreateComment(c *gin.Context) {
 		id := uid.(uint64)
 		userID = &id
 	}
-	comment, err := commentService.CreateComment(articleID, userID, &req)
+	comment, err := commentService.CreateComment(c.Request.Context(), articleID, userID, &req)
 	if err != nil {
 		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
 		return
@@ -89,9 +89,9 @@ func (a *CommentApi) AdminListComments(c *gin.Context) {
 		response.InvalidParam(c, "查询参数错误")
 		return
 	}
-	result, err := commentService.ListComments(&q)
+	result, err := commentService.ListComments(c.Request.Context(), &q)
 	if err != nil {
-		response.ServerError(c, err)
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, result)
@@ -120,8 +120,8 @@ func (a *CommentApi) ReviewComment(c *gin.Context) {
 		response.InvalidParam(c, "请求体格式错误")
 		return
 	}
-	if err := commentService.ReviewComment(id, req.Status); err != nil {
-		response.ServerError(c, err)
+	if err := commentService.ReviewComment(c.Request.Context(), id, req.Status); err != nil {
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, nil)

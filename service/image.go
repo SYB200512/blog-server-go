@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"mime/multipart"
 	"regexp"
 	"strings"
@@ -20,9 +21,9 @@ import (
 type ImageService struct{}
 
 // UploadImage 上传图片到当前配置的存储，并写入图片台账
-func (s *ImageService) UploadImage(file *multipart.FileHeader, category appTypes.ImageCategory) (*response.ImageUploadResult, error) {
+func (s *ImageService) UploadImage(ctx context.Context, file *multipart.FileHeader, category appTypes.ImageCategory) (*response.ImageUploadResult, error) {
 	oss := upload.NewOss()
-	url, key, err := oss.UploadImage(file)
+	url, key, err := oss.UploadImage(ctx, file)
 	if err != nil {
 		global.Log.Error("上传图片失败", zap.String("filename", file.Filename), zap.Error(err))
 		return nil, err
@@ -35,10 +36,10 @@ func (s *ImageService) UploadImage(file *multipart.FileHeader, category appTypes
 		Storage:  upload.CurrentStorage(),
 		Size:     file.Size,
 	}
-	if err := dao.CreateImage(image); err != nil {
+	if err := dao.CreateImage(ctx, image); err != nil {
 		global.Log.Error("写入图片台账失败", zap.String("url", url), zap.Error(err))
 		// 台账写失败则回收刚上传的文件，避免产生孤儿图
-		_ = oss.Delete(key)
+		_ = oss.Delete(ctx, key)
 		return nil, err
 	}
 	return &response.ImageUploadResult{
@@ -50,7 +51,7 @@ func (s *ImageService) UploadImage(file *multipart.FileHeader, category appTypes
 }
 
 // ListImages 图片列表
-func (s *ImageService) ListImages(q *request.ImageListQuery) (*response.PageResult, error) {
+func (s *ImageService) ListImages(ctx context.Context, q *request.ImageListQuery) (*response.PageResult, error) {
 	p := &request.PageParams{Page: q.Page, PageSize: q.PageSize}
 	p.Normalize()
 
@@ -60,7 +61,7 @@ func (s *ImageService) ListImages(q *request.ImageListQuery) (*response.PageResu
 		category = &c
 	}
 
-	images, total, err := dao.ListImages(p, category, q.Keyword)
+	images, total, err := dao.ListImages(ctx, p, category, q.Keyword)
 	if err != nil {
 		global.Log.Error("查询图片列表失败", zap.Error(err))
 		return nil, err
@@ -69,22 +70,22 @@ func (s *ImageService) ListImages(q *request.ImageListQuery) (*response.PageResu
 }
 
 // DeleteImages 批量删除图片（先删存储文件，再删台账记录）
-func (s *ImageService) DeleteImages(ids []uint64) error {
+func (s *ImageService) DeleteImages(ctx context.Context, ids []uint64) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	images, err := dao.GetImagesByIDs(ids)
+	images, err := dao.GetImagesByIDs(ctx, ids)
 	if err != nil {
 		global.Log.Error("查询待删除图片失败", zap.Error(err))
 		return err
 	}
 	for _, image := range images {
-		if err := upload.NewOssWithStorage(image.Storage).Delete(image.Name); err != nil {
+		if err := upload.NewOssWithStorage(image.Storage).Delete(ctx, image.Name); err != nil {
 			global.Log.Warn("删除存储文件失败（继续删台账）",
 				zap.String("key", image.Name), zap.Error(err))
 		}
 	}
-	if err := dao.DeleteImagesByIDs(ids); err != nil {
+	if err := dao.DeleteImagesByIDs(ctx, ids); err != nil {
 		global.Log.Error("删除图片台账失败", zap.Error(err))
 		return err
 	}
@@ -92,8 +93,8 @@ func (s *ImageService) DeleteImages(ids []uint64) error {
 }
 
 // UpdateCategory 批量修改图片分类
-func (s *ImageService) UpdateCategory(ids []uint64, category appTypes.ImageCategory) error {
-	if err := dao.UpdateImageCategoryByIDs(ids, category); err != nil {
+func (s *ImageService) UpdateCategory(ctx context.Context, ids []uint64, category appTypes.ImageCategory) error {
+	if err := dao.UpdateImageCategoryByIDs(ctx, ids, category); err != nil {
 		global.Log.Error("批量修改图片分类失败", zap.Error(err))
 		return err
 	}
@@ -101,20 +102,20 @@ func (s *ImageService) UpdateCategory(ids []uint64, category appTypes.ImageCateg
 }
 
 // ListPhotos 图片墙：公开读取分类为「图片墙」的图片
-func (s *ImageService) ListPhotos(limit int) ([]database.Image, error) {
+func (s *ImageService) ListPhotos(ctx context.Context, limit int) ([]database.Image, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 60
 	}
-	return dao.ListImagesByCategory(appTypes.Photo, limit)
+	return dao.ListImagesByCategory(ctx, appTypes.Photo, limit)
 }
 
 // markdownImageRegex 匹配 Markdown 图片语法 ![alt](url) 中的 URL
 var markdownImageRegex = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
 
 // MarkArticleImages 文章保存后，按用途回写图片分类：封面 → 封面，正文引用 → 插图
-func (s *ImageService) MarkArticleImages(cover, content string) {
+func (s *ImageService) MarkArticleImages(ctx context.Context, cover, content string) {
 	if cover != "" {
-		if err := dao.UpdateImageCategoryByURLs([]string{cover}, appTypes.Cover); err != nil {
+		if err := dao.UpdateImageCategoryByURLs(ctx, []string{cover}, appTypes.Cover); err != nil {
 			global.Log.Warn("回写封面分类失败", zap.String("cover", cover), zap.Error(err))
 		}
 	}
@@ -136,7 +137,7 @@ func (s *ImageService) MarkArticleImages(cover, content string) {
 		seen[u] = struct{}{}
 		urls = append(urls, u)
 	}
-	if err := dao.UpdateImageCategoryByURLs(urls, appTypes.Illustration); err != nil {
+	if err := dao.UpdateImageCategoryByURLs(ctx, urls, appTypes.Illustration); err != nil {
 		global.Log.Warn("回写正文插图分类失败", zap.Error(err))
 	}
 }
