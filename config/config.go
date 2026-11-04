@@ -17,6 +17,13 @@ type ServerConfig struct {
 	Mode            string `yaml:"mode"`
 	RequestTimeout  int    `yaml:"request_timeout"`  // 单请求处理预算（秒）
 	ShutdownTimeout int    `yaml:"shutdown_timeout"` // 优雅停机等待时间（秒）
+
+	// P0 新增：HTTP Server 级别的超时与请求头上限
+	ReadTimeout    int    `yaml:"read_timeout"`     // 读取整个请求（含 body）的最长时间（秒），要 >= 上传预算 60 秒
+	WriteTimeout   int    `yaml:"write_timeout"`    // 写出响应的最长时间（秒）
+	IdleTimeout    int    `yaml:"idle_timeout"`     // keep-alive 空闲连接保留时间（秒）
+	MaxHeaderBytes int    `yaml:"max_header_bytes"` // 请求头大小上限（字节）
+	PprofAddr      string `yaml:"pprof_addr"`
 }
 
 type DatabaseConfig struct {
@@ -28,6 +35,10 @@ type DatabaseConfig struct {
 	Charset      string `yaml:"charset"`
 	MaxOpenConns int    `yaml:"max_open_conns"`
 	MaxIdleConns int    `yaml:"max_idle_conns"`
+
+	// P0 新增：连接生命周期（分钟）
+	ConnMaxLifetime int `yaml:"conn_max_lifetime"`  // 小于 MySQL wait_timeout，避免拿到已被服务端断开的连接
+	ConnMaxIdleTime int `yaml:"conn_max_idle_time"` // 高峰期后回收空闲连接
 }
 
 type JWTConfig struct {

@@ -32,12 +32,17 @@ func ListComments(ctx context.Context, p *request.PageParams, articleID uint64, 
 	return comments, total, err
 }
 
+// 前台单篇文章最多返回的评论条数。
+// P0 先加默认上限，保持响应结构不变；如果产品需要“最新 N 条”，再改成倒序取 N 条后反转。
+const maxCommentsPerArticle = 200
+
 // ListCommentsByArticle 前台：查询文章的已通过评论（顶层 + 回复）
 func ListCommentsByArticle(ctx context.Context, articleID uint64) ([]database.Comment, error) {
 	var comments []database.Comment
 	err := global.DB.WithContext(ctx).Preload("User").
 		Where("article_id = ? AND status = 1", articleID).
 		Order("created_at ASC").
+		Limit(maxCommentsPerArticle).
 		Find(&comments).Error
 	return comments, err
 }

@@ -42,17 +42,24 @@ func ListArticles(ctx context.Context, p *request.PageParams, keyword string, ca
 		query = query.Where("status = ?", *status)
 	}
 
+	// P0：标签条件必须在 Count 之前，否则总数不含标签筛选，分页会错位
+	if tagID > 0 {
+		// EXISTS 比 IN 子查询更稳定，配合 article_tags(tag_id, article_id) 索引
+		query = query.Where(
+			"EXISTS (SELECT 1 FROM article_tags AS at WHERE at.article_id = articles.id AND at.tag_id = ?)",
+			tagID,
+		)
+	}
+
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	// 标签筛选（需关联子查询）
-	if tagID > 0 {
-		query = query.Where("id IN (SELECT article_id FROM article_tags WHERE tag_id = ?)", tagID)
-	}
-
-	err := query.Preload("Category").Preload("Tags").
+	// P0：列表不返回完整 longtext；保留 400 字是为了让摘要为空的卡片仍能生成摘要
+	err := query.
+		Select("id, title, summary, cover, category_id, status, views, like_count, is_top, created_at, updated_at, LEFT(content, 400) AS content").
+		Preload("Category").Preload("Tags").
 		Order("is_top DESC, created_at DESC").
 		Offset(p.Offset()).Limit(p.PageSize).
 		Find(&articles).Error
@@ -147,9 +154,12 @@ func ListTopArticles(ctx context.Context) ([]database.Article, error) {
 }
 
 // ArchiveByMonth 按月归档已发布文章（返回格式：2026-08 等）
+// P0：时间线只用到 id/title/cover/created_at，不再把整篇正文加载进内存。
 func ArchiveByMonth(ctx context.Context) (map[string][]database.Article, error) {
 	var articles []database.Article
-	err := global.DB.WithContext(ctx).Where("status = 1").
+	err := global.DB.WithContext(ctx).
+		Select("id, title, cover, created_at").
+		Where("status = 1").
 		Order("created_at DESC").
 		Find(&articles).Error
 	if err != nil {

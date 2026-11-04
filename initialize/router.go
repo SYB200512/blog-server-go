@@ -16,8 +16,13 @@ import (
 // InitRouter 初始化路由：挂载静态文件、创建公开/后台两个路由组
 func InitRouter() *gin.Engine {
 	r := gin.New()
+
+	// P0：JSON 请求体 1 MB；multipart 按图片配置留 2 MB 余量（配置上限 + 表单开销）
+	jsonLimit := int64(1 << 20)
+	uploadLimit := int64(global.Config.Storage.MaxSize+2) * 1024 * 1024
+
 	// RequestContext 必须在 Logger 之前，保证日志能带上 trace id
-	r.Use(middleware.RequestContext(), middleware.GinLogger(), middleware.GinRecovery(), middleware.CORS())
+	r.Use(middleware.RequestContext(), middleware.GinLogger(), middleware.GinRecovery(), middleware.CORS(), middleware.BodyLimit(jsonLimit, uploadLimit))
 
 	// 健康检查
 	r.GET("/api/health", func(c *gin.Context) {

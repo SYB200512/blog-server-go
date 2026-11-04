@@ -10,6 +10,12 @@ server:
   mode: debug # debug / release
   request_timeout: 10 # 单请求处理预算（秒）
   shutdown_timeout: 15 # 优雅停机等待时间（秒）
+  # P0：HTTP Server 超时与请求头上限
+  read_timeout: 60 # 含 body，必须覆盖上传的 60 秒预算
+  write_timeout: 60 # 响应写出上限
+  idle_timeout: 75 # keep-alive 空闲回收
+  max_header_bytes: 1048576 # 1 MB
+  pprof_addr: "127.0.0.1:6060" # 只监听本机；填 "off" 关闭
 
 database:
   host: 127.0.0.1
@@ -20,6 +26,9 @@ database:
   charset: utf8mb4
   max_open_conns: 100
   max_idle_conns: 10
+  # P0：连接池生命周期
+  conn_max_lifetime: 30 # 分钟，需小于 MySQL wait_timeout
+  conn_max_idle_time: 10 # 分钟
 
 jwt:
   secret: ""              # ← 用环境变量 JWT_SECRET 注入

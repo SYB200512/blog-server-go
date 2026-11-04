@@ -6,10 +6,16 @@ type PageParams struct {
 	PageSize int `json:"page_size"`
 }
 
+// maxPage 页码上限
+const maxPage = 1000
+
 // Normalize 规范化分页参数（默认第 1 页，每页 10 条，上限 100）
 func (p *PageParams) Normalize() {
 	if p.Page <= 0 {
 		p.Page = 1
+	}
+	if p.Page > maxPage {
+		p.Page = maxPage
 	}
 	if p.PageSize <= 0 {
 		p.PageSize = 10

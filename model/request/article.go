@@ -4,10 +4,10 @@ package request
 type ArticleQuery struct {
 	Page       int    `form:"page"`
 	PageSize   int    `form:"page_size"`
-	Keyword    string `form:"keyword"`     // 标题/摘要关键词
-	CategoryID uint64 `form:"category_id"` // 分类筛选
-	TagID      uint64 `form:"tag_id"`      // 标签筛选
-	Status     *int8  `form:"status"`      // 状态筛选（后台用）
+	Keyword    string `form:"keyword" binding:"max=64"` // 标题/摘要关键词,限制关键词长度，避免超长 LIKE
+	CategoryID uint64 `form:"category_id"`              // 分类筛选
+	TagID      uint64 `form:"tag_id"`                   // 标签筛选
+	Status     *int8  `form:"status"`                   // 状态筛选（后台用）
 }
 
 // ArticleCreateRequest 创建文章请求

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -30,6 +31,12 @@ type ImageApi struct{}
 func (a *ImageApi) UploadImage(c *gin.Context) {
 	_, header, err := c.Request.FormFile("image")
 	if err != nil {
+		// P0：区分“超过入口大小限制”和“没选文件”，超限返回 413
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			response.Fail(c, http.StatusRequestEntityTooLarge, response.CodeInvalidParam, "图片大小超过限制")
+			return
+		}
 		response.InvalidParam(c, "请选择要上传的图片")
 		return
 	}

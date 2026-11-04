@@ -67,6 +67,30 @@ func applyDefaults(cfg *config.Config) {
 	if cfg.Log.MaxAge == 0 {
 		cfg.Log.MaxAge = 30
 	}
+
+	// P0：HTTP Server 超时默认值，避免 yaml 漏配时出现 0 值
+	if cfg.Server.ReadTimeout == 0 {
+		cfg.Server.ReadTimeout = 60
+	}
+	if cfg.Server.WriteTimeout == 0 {
+		cfg.Server.WriteTimeout = 60
+	}
+	if cfg.Server.IdleTimeout == 0 {
+		cfg.Server.IdleTimeout = 75
+	}
+	if cfg.Server.MaxHeaderBytes == 0 {
+		cfg.Server.MaxHeaderBytes = 1 << 20
+	}
+	if cfg.Server.PprofAddr == "" {
+		cfg.Server.PprofAddr = "127.0.0.1:6060" // 填 "off" 可关闭
+	}
+	// P0：连接池生命周期默认值
+	if cfg.Database.ConnMaxLifetime == 0 {
+		cfg.Database.ConnMaxLifetime = 30
+	}
+	if cfg.Database.ConnMaxIdleTime == 0 {
+		cfg.Database.ConnMaxIdleTime = 10
+	}
 }
 
 // overrideWithEnv 用环境变量覆盖敏感配置，避免把密码/密钥写进仓库。优先级：环境变量 > config.yaml
