@@ -1,0 +1,25 @@
+[Unit]
+Description=Blog Backend (Go, sunvyn.cn)
+# 开机自启由 [Install] 的 WantedBy 决定；进程崩溃由 Restart 自动拉起
+After=network-online.target docker.service
+Wants=network-online.target
+# 取消启动频率限制，保证异常时也能无限重试
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/blog/backend
+# start.sh 负责加载 backend.env（保留 shell source 语义）并 exec 二进制
+ExecStart=/opt/blog/backend/start.sh
+Restart=always
+RestartSec=3
+# Go 程序自身有优雅停机（config.yaml shutdown_timeout: 15s），留出余量即可
+TimeoutStopSec=25
+KillMode=mixed
+StandardOutput=append:/opt/blog/backend/blog.log
+StandardError=append:/opt/blog/backend/blog.log
+
+[Install]
+WantedBy=multi-user.target

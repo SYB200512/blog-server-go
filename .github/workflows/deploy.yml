@@ -1,6 +1,8 @@
 # blog-server-go：构建 + 部署 Go 后端到云服务器
 # 触发：push 到 main，或手动 Run workflow
 # 需要的 Secrets：SERVER_HOST / SERVER_USER(ubuntu) / SERVER_SSH_KEY
+# 服务托管：systemd（开机自启 / 崩溃自愈）；新版探活失败自动回滚到上一版本
+# 前提：服务器上的 SERVER_USER 具备免密 sudo（安装 unit、systemctl 操作）
 
 name: Deploy Backend
 
@@ -90,7 +92,7 @@ jobs:
             echo "启动脚本上传失败"; exit 1
           fi
 
-      - name: 安装并重启后端（原生 ssh，幂等重试，HTTP 探活判定）
+      - name: 上传 systemd unit（deploy/blog-backend.service）
         env:
           HOST: ${{ secrets.SERVER_HOST }}
           USER: ${{ secrets.SERVER_USER }}
@@ -98,21 +100,89 @@ jobs:
         run: |
           echo "$KEY" > /tmp/ssh_key
           chmod 600 /tmp/ssh_key
-          # 用原生 ssh 短命令（与上传校验一致，比 ssh-action 更抗连接抖动）
-          # install 幂等：即使上次中途断开，重试时重新安装即可
-          # 二进制以 gz 形式传输，安装前先 gzip -t 校验完整性再解压覆盖
+          # 同样以服务器端文件大小校验为准，避免 scp 退出码误报
+          LOCAL_SIZE=$(stat -c %s deploy/blog-backend.service)
+          for i in 1 2 3; do
+            echo "== unit 上传尝试 $i（本地 $LOCAL_SIZE 字节）=="
+            scp -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                -o ConnectTimeout=30 deploy/blog-backend.service "${USER}@${HOST}:/tmp/blog_backend.service" || true
+            REMOTE_SIZE=$(ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                -o ConnectTimeout=30 "${USER}@${HOST}" \
+                "stat -c %s /tmp/blog_backend.service 2>/dev/null" || echo 0)
+            echo "远程大小: ${REMOTE_SIZE:-0}"
+            if [ "$LOCAL_SIZE" = "${REMOTE_SIZE:-0}" ]; then
+              echo "unit 上传校验通过（第 $i 次）"
+              break
+            fi
+            echo "第 $i 次校验不符，15 秒后重试"; sleep 15
+          done
+          if [ "$LOCAL_SIZE" != "${REMOTE_SIZE:-0}" ]; then
+            echo "unit 上传失败"; exit 1
+          fi
+
+      - name: 安装 systemd 服务并部署（探活失败自动回滚）
+        env:
+          HOST: ${{ secrets.SERVER_HOST }}
+          USER: ${{ secrets.SERVER_USER }}
+          KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          echo "$KEY" > /tmp/ssh_key
+          chmod 600 /tmp/ssh_key
+          SUCCESS=0
+          # systemd 托管：安装 unit → 备份旧二进制 → 安装新版 → 探活
+          # 探活不通过则用 .bak 回滚并重启，避免新版把站点打挂后仍误报成功
           for i in 1 2 3 4 5; do
             echo "== 部署尝试 $i =="
             RESULT=$(ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                 -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 \
-                "${USER}@${HOST}" 'set -e; cd /opt/blog/backend; cp -f blog-backend blog-backend.bak 2>/dev/null || true; gzip -t releases/blog-backend.new.gz; gunzip -cf releases/blog-backend.new.gz > releases/binary.tmp; install -m 0755 releases/binary.tmp blog-backend; rm -f releases/binary.tmp releases/blog-backend.new.gz; install -m 0755 /tmp/blog_start.sh start.sh; ./start.sh; for j in 1 2 3 4 5 6; do sleep 3; CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health || echo 000); if [ "$CODE" = "200" ]; then echo "OK_HTTP_200"; exit 0; fi; done; echo "PROBE_FAIL"; exit 1' || echo "SSH_FAIL")
+                "${USER}@${HOST}" 'set -u
+          cd /opt/blog/backend
+          # 1) 安装/刷新 unit（幂等），并开启开机自启
+          sudo install -m 0644 /tmp/blog_backend.service /etc/systemd/system/blog-backend.service || { echo UNIT_INSTALL_FAIL; exit 1; }
+          sudo systemctl daemon-reload || { echo DAEMON_RELOAD_FAIL; exit 1; }
+          sudo systemctl enable blog-backend >/dev/null 2>&1 || { echo ENABLE_FAIL; exit 1; }
+          # 2) 备份当前版本
+          [ -x blog-backend ] && cp -f blog-backend blog-backend.bak
+          # 3) 校验并安装新二进制
+          gzip -t releases/blog-backend.new.gz || { echo GZIP_BAD; exit 1; }
+          gunzip -cf releases/blog-backend.new.gz > releases/binary.tmp || { echo GUNZIP_FAIL; exit 1; }
+          install -m 0755 releases/binary.tmp blog-backend || { echo INSTALL_FAIL; exit 1; }
+          rm -f releases/binary.tmp releases/blog-backend.new.gz
+          install -m 0755 /tmp/blog_start.sh start.sh || { echo START_INSTALL_FAIL; exit 1; }
+          # 4) 停止旧进程（兼容首次从 nohup 裸进程迁移），交给 systemd 启动
+          sudo systemctl stop blog-backend >/dev/null 2>&1 || true
+          pkill -x blog-backend || true
+          sleep 1
+          sudo systemctl start blog-backend || true
+          # 5) HTTP 探活
+          for j in 1 2 3 4 5 6; do
+            sleep 3
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health || echo 000)
+            if [ "$CODE" = "200" ]; then echo OK_HTTP_200; exit 0; fi
+          done
+          # 6) 新版未通过探活：回滚到上一版本并再次探活
+          echo PROBE_FAIL_ROLLBACK
+          [ -x blog-backend.bak ] || { echo ROLLBACK_NO_BACKUP; exit 1; }
+          install -m 0755 blog-backend.bak blog-backend || { echo ROLLBACK_INSTALL_FAIL; exit 1; }
+          sudo systemctl restart blog-backend || true
+          for j in 1 2 3 4 5; do
+            sleep 3
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health || echo 000)
+            if [ "$CODE" = "200" ]; then echo ROLLBACK_OK; exit 0; fi
+          done
+          echo ROLLBACK_FAIL; exit 1' || true)
             echo "结果: $RESULT"
             if [[ "$RESULT" == *"OK_HTTP_200"* ]]; then
-              echo "部署成功（第 $i 次）"
-              break
+              echo "部署成功（第 $i 次）"; SUCCESS=1; break
             fi
-            echo "第 $i 次失败，15 秒后重试"; sleep 15
+            if [[ "$RESULT" == *"ROLLBACK_OK"* ]]; then
+              echo "新版探活失败，已回滚到上一版本（第 $i 次）；停止重试"; exit 1
+            fi
+            if [[ "$RESULT" == *"_FAIL"* || "$RESULT" == *"_BAD"* || "$RESULT" == *"PROBE_FAIL_ROLLBACK"* ]]; then
+              echo "部署异常（第 $i 次），停止重试"; exit 1
+            fi
+            echo "第 $i 次无明确结果（可能连接中断），15 秒后重试"; sleep 15
           done
-          if [[ "$RESULT" != *"OK_HTTP_200"* ]]; then
+          if [ "$SUCCESS" != 1 ]; then
             echo "部署最终失败"; exit 1
           fi
