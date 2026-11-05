@@ -110,7 +110,11 @@ func CreateArticle(ctx context.Context, article *database.Article, tagIDs []uint
 // UpdateArticle 更新文章及标签
 func UpdateArticle(ctx context.Context, article *database.Article, tagIDs []uint64) error {
 	return global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(article).Error; err != nil {
+		// 跳过关联写入：article.Category 是 GetArticleByID 里 Preload 出来的“旧分类”，
+		// GORM 保存 belongs-to 关联时会把该旧分类的主键回填到 category_id，
+		// 覆盖掉本次请求传入的新分类（表现为后台改分类不生效）。
+		// 标签在下面显式 Replace，同样不需要 Save 处理。
+		if err := tx.Omit("Category", "Tags").Save(article).Error; err != nil {
 			return err
 		}
 		if tagIDs != nil {
