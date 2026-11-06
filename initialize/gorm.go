@@ -15,7 +15,11 @@ import (
 
 // InitGorm 连接 MySQL 并注入全局 DB
 func InitGorm() {
-	db, err := gorm.Open(mysql.Open(global.Config.Database.DSN()), &gorm.Config{})
+	// TranslateError：让 GORM 把 MySQL 1062 等驱动错误翻译成
+	// gorm.ErrDuplicatedKey，dao 层不必硬编码错误码
+	db, err := gorm.Open(mysql.Open(global.Config.Database.DSN()), &gorm.Config{
+		TranslateError: true,
+	})
 	if err != nil {
 		global.Log.Fatal("初始化数据库失败", zap.Error(err))
 	}

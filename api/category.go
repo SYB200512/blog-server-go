@@ -51,7 +51,7 @@ func (a *CategoryApi) CreateCategory(c *gin.Context) {
 	}
 	category, err := categoryService.CreateCategory(c.Request.Context(), &req)
 	if err != nil {
-		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, category)
@@ -82,7 +82,7 @@ func (a *CategoryApi) UpdateCategory(c *gin.Context) {
 	}
 	category, err := categoryService.UpdateCategory(c.Request.Context(), id, &req)
 	if err != nil {
-		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, category)
@@ -105,7 +105,7 @@ func (a *CategoryApi) DeleteCategory(c *gin.Context) {
 		return
 	}
 	if err := categoryService.DeleteCategory(c.Request.Context(), id); err != nil {
-		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, nil)
@@ -149,7 +149,7 @@ func (a *CategoryApi) CreateTag(c *gin.Context) {
 	}
 	tag, err := categoryService.CreateTag(c.Request.Context(), &req)
 	if err != nil {
-		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, tag)
@@ -172,7 +172,7 @@ func (a *CategoryApi) DeleteTag(c *gin.Context) {
 		return
 	}
 	if err := categoryService.DeleteTag(c.Request.Context(), id); err != nil {
-		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, nil)

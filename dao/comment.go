@@ -22,14 +22,14 @@ func ListComments(ctx context.Context, p *request.PageParams, articleID uint64, 
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
+		return nil, 0, wrapErr("count comments", err)
 	}
 
 	err := query.Preload("User").
 		Order("created_at DESC").
 		Offset(p.Offset()).Limit(p.PageSize).
 		Find(&comments).Error
-	return comments, total, err
+	return comments, total, wrapErr("list comments", err)
 }
 
 // 前台单篇文章最多返回的评论条数。
@@ -44,18 +44,18 @@ func ListCommentsByArticle(ctx context.Context, articleID uint64) ([]database.Co
 		Order("created_at ASC").
 		Limit(maxCommentsPerArticle).
 		Find(&comments).Error
-	return comments, err
+	return comments, wrapErr("list comments by article", err)
 }
 
 // CreateComment 创建评论
 func CreateComment(ctx context.Context, comment *database.Comment) error {
-	return global.DB.WithContext(ctx).Create(comment).Error
+	return wrapErr("create comment", global.DB.WithContext(ctx).Create(comment).Error)
 }
 
 // UpdateCommentStatus 更新评论状态（审核通过/删除）
 func UpdateCommentStatus(ctx context.Context, id uint64, status int8) error {
-	return global.DB.WithContext(ctx).Model(&database.Comment{}).Where("id = ?", id).
-		Update("status", status).Error
+	return wrapErr("update comment status", global.DB.WithContext(ctx).Model(&database.Comment{}).Where("id = ?", id).
+		Update("status", status).Error)
 }
 
 // CountComments 评论总数
@@ -66,5 +66,5 @@ func CountComments(ctx context.Context, status *int8) (int64, error) {
 		query = query.Where("status = ?", *status)
 	}
 	err := query.Count(&count).Error
-	return count, err
+	return count, wrapErr("count comments", err)
 }

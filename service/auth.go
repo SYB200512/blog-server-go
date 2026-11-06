@@ -10,6 +10,7 @@ import (
 	"blog-backend/dao"
 	"blog-backend/global"
 	"blog-backend/model/database"
+	"blog-backend/model/errs"
 	"blog-backend/model/request"
 	"blog-backend/model/response"
 	"blog-backend/utils"
@@ -22,20 +23,23 @@ type AuthService struct{}
 func (s *AuthService) Login(ctx context.Context, req *request.LoginRequest) (*response.LoginResponse, error) {
 	user, err := dao.GetUserByUsername(ctx, req.Username)
 	if err != nil {
-		// 用户名不存在或查询失败，统一返回"用户名或密码错误"，避免泄露用户是否存在
 		global.Log.Warn("登录失败：用户查询错误", zap.String("username", req.Username), zap.Error(err))
-		return nil, errors.New("用户名或密码错误")
+		if errors.Is(err, errs.ErrNotFound) {
+			// 用户名不存在与密码错误返回同一文案，避免泄露用户是否存在
+			return nil, errs.New(errs.ErrInvalid, "用户名或密码错误")
+		}
+		return nil, err
 	}
 	// 校验密码
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
 		global.Log.Warn("登录失败：密码错误", zap.String("username", req.Username))
-		return nil, errors.New("用户名或密码错误")
+		return nil, errs.New(errs.ErrInvalid, "用户名或密码错误")
 	}
 	// 签发 JWT
 	token, err := utils.GenerateToken(user.ID, user.Username, user.Role)
 	if err != nil {
 		global.Log.Error("生成 token 失败", zap.String("username", req.Username), zap.Error(err))
-		return nil, errors.New("生成 token 失败")
+		return nil, err
 	}
 	return &response.LoginResponse{
 		Token: token,
@@ -47,8 +51,12 @@ func (s *AuthService) Login(ctx context.Context, req *request.LoginRequest) (*re
 func (s *AuthService) GetProfile(ctx context.Context, userID uint64) (*response.UserInfo, error) {
 	user, err := dao.GetUserByID(ctx, userID)
 	if err != nil {
-		global.Log.Warn("获取用户信息失败", zap.Uint64("user_id", userID), zap.Error(err))
-		return nil, errors.New("用户不存在")
+		if errors.Is(err, errs.ErrNotFound) {
+			global.Log.Warn("获取用户信息失败：用户不存在", zap.Uint64("user_id", userID))
+			return nil, errs.Wrap(errs.ErrNotFound, "用户不存在", err)
+		}
+		global.Log.Error("获取用户信息失败", zap.Uint64("user_id", userID), zap.Error(err))
+		return nil, err
 	}
 	return toUserInfo(user), nil
 }

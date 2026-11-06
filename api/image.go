@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -47,11 +46,7 @@ func (a *ImageApi) UploadImage(c *gin.Context) {
 
 	result, err := imageService.UploadImage(c.Request.Context(), header, category)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			response.FromError(c, err)
-			return
-		}
-		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, result)

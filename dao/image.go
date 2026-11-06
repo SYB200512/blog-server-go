@@ -11,7 +11,7 @@ import (
 
 // CreateImage 新增图片台账记录
 func CreateImage(ctx context.Context, image *database.Image) error {
-	return global.DB.WithContext(ctx).Create(image).Error
+	return wrapErr("create image", global.DB.WithContext(ctx).Create(image).Error)
 }
 
 // ListImages 分页查询图片（可按分类、文件名筛选）
@@ -27,22 +27,22 @@ func ListImages(ctx context.Context, p *request.PageParams, category *appTypes.I
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
+		return nil, 0, wrapErr("count images", err)
 	}
 	err := query.Order("id DESC").Offset(p.Offset()).Limit(p.PageSize).Find(&images).Error
-	return images, total, err
+	return images, total, wrapErr("list images", err)
 }
 
 // GetImagesByIDs 按 ID 批量查询
 func GetImagesByIDs(ctx context.Context, ids []uint64) ([]database.Image, error) {
 	var images []database.Image
 	err := global.DB.WithContext(ctx).Where("id IN ?", ids).Find(&images).Error
-	return images, err
+	return images, wrapErr("get images by ids", err)
 }
 
 // DeleteImagesByIDs 按 ID 批量删除台账记录
 func DeleteImagesByIDs(ctx context.Context, ids []uint64) error {
-	return global.DB.WithContext(ctx).Where("id IN ?", ids).Delete(&database.Image{}).Error
+	return wrapErr("delete images by ids", global.DB.WithContext(ctx).Where("id IN ?", ids).Delete(&database.Image{}).Error)
 }
 
 // UpdateImageCategoryByURLs 按 URL 批量更新分类
@@ -50,14 +50,14 @@ func UpdateImageCategoryByURLs(ctx context.Context, urls []string, category appT
 	if len(urls) == 0 {
 		return nil
 	}
-	return global.DB.WithContext(ctx).Model(&database.Image{}).Where("url IN ?", urls).
-		Update("category", category).Error
+	return wrapErr("update image category by urls", global.DB.WithContext(ctx).Model(&database.Image{}).Where("url IN ?", urls).
+		Update("category", category).Error)
 }
 
 // UpdateImageCategoryByID 更新单张图片分类
 func UpdateImageCategoryByID(ctx context.Context, id uint64, category appTypes.ImageCategory) error {
-	return global.DB.WithContext(ctx).Model(&database.Image{}).Where("id = ?", id).
-		Update("category", category).Error
+	return wrapErr("update image category by id", global.DB.WithContext(ctx).Model(&database.Image{}).Where("id = ?", id).
+		Update("category", category).Error)
 }
 
 // UpdateImageCategoryByIDs 批量更新图片分类
@@ -65,8 +65,8 @@ func UpdateImageCategoryByIDs(ctx context.Context, ids []uint64, category appTyp
 	if len(ids) == 0 {
 		return nil
 	}
-	return global.DB.WithContext(ctx).Model(&database.Image{}).Where("id IN ?", ids).
-		Update("category", category).Error
+	return wrapErr("update image category by ids", global.DB.WithContext(ctx).Model(&database.Image{}).Where("id IN ?", ids).
+		Update("category", category).Error)
 }
 
 // ListImagesByCategory 按分类取图片（公开接口用，按上传时间倒序）
@@ -74,5 +74,5 @@ func ListImagesByCategory(ctx context.Context, category appTypes.ImageCategory, 
 	var images []database.Image
 	err := global.DB.WithContext(ctx).Where("category = ?", category).
 		Order("id DESC").Limit(limit).Find(&images).Error
-	return images, err
+	return images, wrapErr("list images by category", err)
 }

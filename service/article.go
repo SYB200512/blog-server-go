@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 
 	"blog-backend/dao"
 	"blog-backend/global"
 	"blog-backend/model/database"
+	"blog-backend/model/errs"
 	"blog-backend/model/request"
 	"blog-backend/model/response"
 )
@@ -48,9 +48,9 @@ func (s *ArticleService) AdminListArticles(ctx context.Context, q *request.Artic
 func (s *ArticleService) GetArticle(ctx context.Context, id uint64) (*database.Article, error) {
 	article, err := dao.GetPublishedArticleByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, errs.ErrNotFound) {
 			global.Log.Warn("前台文章不存在", zap.Uint64("article_id", id))
-			return nil, errors.New("文章不存在")
+			return nil, errs.Wrap(errs.ErrNotFound, "文章不存在", err)
 		}
 		global.Log.Error("查询前台文章详情失败", zap.Uint64("article_id", id), zap.Error(err))
 		return nil, err
@@ -65,9 +65,9 @@ func (s *ArticleService) GetArticle(ctx context.Context, id uint64) (*database.A
 func (s *ArticleService) AdminGetArticle(ctx context.Context, id uint64) (*database.Article, error) {
 	article, err := dao.GetArticleByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, errs.ErrNotFound) {
 			global.Log.Warn("后台文章不存在", zap.Uint64("article_id", id))
-			return nil, errors.New("文章不存在")
+			return nil, errs.Wrap(errs.ErrNotFound, "文章不存在", err)
 		}
 		global.Log.Error("查询后台文章详情失败", zap.Uint64("article_id", id), zap.Error(err))
 		return nil, err
@@ -143,8 +143,12 @@ func (s *ArticleService) generateCoverAsync(id uint64, title, summary string) {
 func (s *ArticleService) UpdateArticle(ctx context.Context, id uint64, req *request.ArticleUpdateRequest) (*database.Article, error) {
 	article, err := dao.GetArticleByID(ctx, id)
 	if err != nil {
-		global.Log.Warn("更新文章时文章不存在", zap.Uint64("article_id", id))
-		return nil, errors.New("文章不存在")
+		if errors.Is(err, errs.ErrNotFound) {
+			global.Log.Warn("更新文章时文章不存在", zap.Uint64("article_id", id))
+			return nil, errs.Wrap(errs.ErrNotFound, "文章不存在", err)
+		}
+		global.Log.Error("更新文章时查询失败", zap.Uint64("article_id", id), zap.Error(err))
+		return nil, err
 	}
 	if req.Title != "" {
 		article.Title = req.Title
@@ -183,8 +187,12 @@ func (s *ArticleService) UpdateArticle(ctx context.Context, id uint64, req *requ
 // DeleteArticle 删除文章（软删除）
 func (s *ArticleService) DeleteArticle(ctx context.Context, id uint64) error {
 	if _, err := dao.GetArticleByID(ctx, id); err != nil {
-		global.Log.Warn("删除文章时文章不存在", zap.Uint64("article_id", id))
-		return errors.New("文章不存在")
+		if errors.Is(err, errs.ErrNotFound) {
+			global.Log.Warn("删除文章时文章不存在", zap.Uint64("article_id", id))
+			return errs.Wrap(errs.ErrNotFound, "文章不存在", err)
+		}
+		global.Log.Error("删除文章时查询失败", zap.Uint64("article_id", id), zap.Error(err))
+		return err
 	}
 	if err := dao.DeleteArticle(ctx, id); err != nil {
 		global.Log.Error("删除文章失败", zap.Uint64("article_id", id), zap.Error(err))

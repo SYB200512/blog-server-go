@@ -65,7 +65,7 @@ func (a *CommentApi) CreateComment(c *gin.Context) {
 	}
 	comment, err := commentService.CreateComment(c.Request.Context(), articleID, userID, &req)
 	if err != nil {
-		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, comment)

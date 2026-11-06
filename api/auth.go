@@ -28,7 +28,7 @@ func (a *AuthApi) Login(c *gin.Context) {
 	}
 	resp, err := authService.Login(c.Request.Context(), &req)
 	if err != nil {
-		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, resp)
@@ -47,7 +47,7 @@ func (a *AuthApi) GetProfile(c *gin.Context) {
 	userID := c.GetUint64("userID")
 	info, err := authService.GetProfile(c.Request.Context(), userID)
 	if err != nil {
-		response.Fail(c, 400, response.CodeNotFound, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, info)

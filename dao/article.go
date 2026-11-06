@@ -18,7 +18,7 @@ func CountArticles(ctx context.Context, status *int8) (int64, error) {
 		query = query.Where("status = ?", *status)
 	}
 	err := query.Count(&count).Error
-	return count, err
+	return count, wrapErr("count articles", err)
 }
 
 // ListArticles 文章分页列表
@@ -53,7 +53,7 @@ func ListArticles(ctx context.Context, p *request.PageParams, keyword string, ca
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
+		return nil, 0, wrapErr("count articles", err)
 	}
 
 	// P0：列表不返回完整 longtext；保留 400 字是为了让摘要为空的卡片仍能生成摘要
@@ -63,7 +63,7 @@ func ListArticles(ctx context.Context, p *request.PageParams, keyword string, ca
 		Order("is_top DESC, created_at DESC").
 		Offset(p.Offset()).Limit(p.PageSize).
 		Find(&articles).Error
-	return articles, total, err
+	return articles, total, wrapErr("list articles", err)
 }
 
 // GetArticleByID 根据 ID 查询文章（含关联）
@@ -72,7 +72,7 @@ func GetArticleByID(ctx context.Context, id uint64) (*database.Article, error) {
 	err := global.DB.WithContext(ctx).Preload("Category").Preload("Tags").
 		Where("id = ?", id).First(&article).Error
 	if err != nil {
-		return nil, err
+		return nil, wrapErr("get article", err)
 	}
 	return &article, nil
 }
@@ -83,14 +83,14 @@ func GetPublishedArticleByID(ctx context.Context, id uint64) (*database.Article,
 	err := global.DB.WithContext(ctx).Preload("Category").Preload("Tags").
 		Where("id = ? AND status = 1", id).First(&article).Error
 	if err != nil {
-		return nil, err
+		return nil, wrapErr("get published article", err)
 	}
 	return &article, nil
 }
 
 // CreateArticle 创建文章
 func CreateArticle(ctx context.Context, article *database.Article, tagIDs []uint64) error {
-	return global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return wrapErr("create article", global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(article).Error; err != nil {
 			return err
 		}
@@ -104,12 +104,12 @@ func CreateArticle(ctx context.Context, article *database.Article, tagIDs []uint
 			}
 		}
 		return nil
-	})
+	}))
 }
 
 // UpdateArticle 更新文章及标签
 func UpdateArticle(ctx context.Context, article *database.Article, tagIDs []uint64) error {
-	return global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return wrapErr("update article", global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 跳过关联写入：article.Category 是 GetArticleByID 里 Preload 出来的“旧分类”，
 		// GORM 保存 belongs-to 关联时会把该旧分类的主键回填到 category_id，
 		// 覆盖掉本次请求传入的新分类（表现为后台改分类不生效）。
@@ -129,24 +129,24 @@ func UpdateArticle(ctx context.Context, article *database.Article, tagIDs []uint
 			}
 		}
 		return nil
-	})
+	}))
 }
 
 // DeleteArticle 软删除文章
 func DeleteArticle(ctx context.Context, id uint64) error {
-	return global.DB.WithContext(ctx).Delete(&database.Article{}, id).Error
+	return wrapErr("delete article", global.DB.WithContext(ctx).Delete(&database.Article{}, id).Error)
 }
 
 // UpdateArticleCover 异步生成封面完成后，仅回写 cover 字段
 func UpdateArticleCover(ctx context.Context, id uint64, cover string) error {
-	return global.DB.WithContext(ctx).Model(&database.Article{}).Where("id = ?", id).
-		UpdateColumn("cover", cover).Error
+	return wrapErr("update article cover", global.DB.WithContext(ctx).Model(&database.Article{}).Where("id = ?", id).
+		UpdateColumn("cover", cover).Error)
 }
 
 // IncrementViews 浏览量 +1
 func IncrementViews(ctx context.Context, id uint64) error {
-	return global.DB.WithContext(ctx).Model(&database.Article{}).Where("id = ?", id).
-		UpdateColumn("views", gorm.Expr("views + 1")).Error
+	return wrapErr("increment article views", global.DB.WithContext(ctx).Model(&database.Article{}).Where("id = ?", id).
+		UpdateColumn("views", gorm.Expr("views + 1")).Error)
 }
 
 // ListTopArticles 置顶文章列表
@@ -154,7 +154,7 @@ func ListTopArticles(ctx context.Context) ([]database.Article, error) {
 	var articles []database.Article
 	err := global.DB.WithContext(ctx).Where("status = 1 AND is_top = 1").
 		Order("created_at DESC").Find(&articles).Error
-	return articles, err
+	return articles, wrapErr("list top articles", err)
 }
 
 // ArchiveByMonth 按月归档已发布文章（返回格式：2026-08 等）
@@ -167,7 +167,7 @@ func ArchiveByMonth(ctx context.Context) (map[string][]database.Article, error) 
 		Order("created_at DESC").
 		Find(&articles).Error
 	if err != nil {
-		return nil, err
+		return nil, wrapErr("archive articles", err)
 	}
 	result := make(map[string][]database.Article)
 	for _, a := range articles {

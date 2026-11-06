@@ -1,8 +1,6 @@
 package api
 
 import (
-	"context"
-	"errors"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -59,11 +57,7 @@ func (a *ArticleApi) GetArticle(c *gin.Context) {
 	// 传请求 ctx：客户端断开或请求超时会中断下方的 DB 查询
 	article, err := articleService.GetArticle(c.Request.Context(), id)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			response.FromError(c, err)
-			return
-		}
-		response.NotFound(c, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, article)
@@ -116,11 +110,7 @@ func (a *ArticleApi) AdminGetArticle(c *gin.Context) {
 	}
 	article, err := articleService.AdminGetArticle(c.Request.Context(), id)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			response.FromError(c, err)
-			return
-		}
-		response.NotFound(c, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, article)
@@ -176,7 +166,7 @@ func (a *ArticleApi) UpdateArticle(c *gin.Context) {
 	}
 	article, err := articleService.UpdateArticle(c.Request.Context(), id, &req)
 	if err != nil {
-		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, article)
@@ -199,7 +189,7 @@ func (a *ArticleApi) DeleteArticle(c *gin.Context) {
 		return
 	}
 	if err := articleService.DeleteArticle(c.Request.Context(), id); err != nil {
-		response.Fail(c, 400, response.CodeInvalidParam, err.Error())
+		response.FromError(c, err)
 		return
 	}
 	response.Success(c, nil)

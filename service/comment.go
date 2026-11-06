@@ -9,6 +9,7 @@ import (
 	"blog-backend/dao"
 	"blog-backend/global"
 	"blog-backend/model/database"
+	"blog-backend/model/errs"
 	"blog-backend/model/request"
 	"blog-backend/model/response"
 )
@@ -43,8 +44,12 @@ func (s *CommentService) ListCommentsByArticle(ctx context.Context, articleID ui
 func (s *CommentService) CreateComment(ctx context.Context, articleID uint64, userID *uint64, req *request.CommentCreateRequest) (*database.Comment, error) {
 	// 校验文章存在且已发布
 	if _, err := dao.GetPublishedArticleByID(ctx, articleID); err != nil {
-		global.Log.Warn("发表评论时文章不存在", zap.Uint64("article_id", articleID))
-		return nil, errors.New("文章不存在")
+		if errors.Is(err, errs.ErrNotFound) {
+			global.Log.Warn("发表评论时文章不存在", zap.Uint64("article_id", articleID))
+			return nil, errs.Wrap(errs.ErrNotFound, "文章不存在", err)
+		}
+		global.Log.Error("发表评论时查询文章失败", zap.Uint64("article_id", articleID), zap.Error(err))
+		return nil, err
 	}
 	comment := &database.Comment{
 		ArticleID: articleID,
@@ -56,7 +61,7 @@ func (s *CommentService) CreateComment(ctx context.Context, articleID uint64, us
 	if userID == nil {
 		if req.Content == "" {
 			global.Log.Warn("游客评论内容为空", zap.Uint64("article_id", articleID))
-			return nil, errors.New("评论内容不能为空")
+			return nil, errs.New(errs.ErrInvalid, "评论内容不能为空")
 		}
 	}
 	if err := dao.CreateComment(ctx, comment); err != nil {

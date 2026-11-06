@@ -12,7 +12,7 @@ func GetUserByUsername(ctx context.Context, username string) (*database.User, er
 	var user database.User
 	err := global.DB.WithContext(ctx).Where("username = ?", username).First(&user).Error
 	if err != nil {
-		return nil, err
+		return nil, wrapErr("get user by username", err)
 	}
 	return &user, nil
 }
@@ -22,12 +22,12 @@ func GetUserByID(ctx context.Context, id uint64) (*database.User, error) {
 	var user database.User
 	err := global.DB.WithContext(ctx).First(&user, id).Error
 	if err != nil {
-		return nil, err
+		return nil, wrapErr("get user", err)
 	}
 	return &user, nil
 }
 
 // CreateUser 创建用户
 func CreateUser(ctx context.Context, user *database.User) error {
-	return global.DB.WithContext(ctx).Create(user).Error
+	return wrapErr("create user", global.DB.WithContext(ctx).Create(user).Error)
 }
