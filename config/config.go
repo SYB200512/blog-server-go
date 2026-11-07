@@ -1,6 +1,11 @@
 package config
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+)
 
 // Config 全局配置
 type Config struct {
@@ -46,11 +51,20 @@ type JWTConfig struct {
 	ExpireHours int    `yaml:"expire_hours"`
 }
 
+// AIConfig AI 相关配置
 type AIConfig struct {
-	DashScopeAPIKey string `yaml:"dashscope_api_key"`
-	DashScopeBase   string `yaml:"dashscope_base"`
-	CoversDir       string `yaml:"covers_dir"`
-	CoverTimeout    int    `yaml:"cover_timeout"` // 异步生成封面超时（秒）
+	Cover CoverConfig `yaml:"cover"`
+}
+
+// CoverConfig AI 封面生成配置。Enabled 决定 cover 功能是否开启：
+//   - enabled=true  且 api_key 为空 → 启动硬失败（否则发文后异步生成静默失败）
+//   - enabled=false 且 api_key 为空 → 仅 warn，封面功能关闭
+type CoverConfig struct {
+	Enabled      bool   `yaml:"enabled"`       // 是否启用 AI 封面生成
+	APIKey       string `yaml:"api_key"`       // DashScope API Key，环境变量 DASHSCOPE_API_KEY
+	BaseURL      string `yaml:"base_url"`      // DashScope 服务地址
+	CoversDir    string `yaml:"covers_dir"`    // 本地存储时封面/图片落盘目录，cos 模式不使用
+	CoverTimeout int    `yaml:"cover_timeout"` // 异步生成封面超时（秒）
 }
 
 // StorageConfig 图片存储配置：type 决定使用本地目录还是对象存储
@@ -83,4 +97,133 @@ type ZapConfig struct {
 func (d *DatabaseConfig) DSN() string {
 	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=True&loc=Local",
 		d.User, d.Password, d.Host, d.Port, d.DBName, d.Charset)
+}
+
+// 存储类型枚举
+const (
+	StorageLocal = "local"
+	StorageCos   = "cos"
+)
+
+// placeholderSecrets 示例/占位密钥，防止把 example 文件改个名就上线
+var placeholderSecrets = map[string]struct{}{
+	"change-me":   {},
+	"changeme":    {},
+	"secret":      {},
+	"your-secret": {},
+}
+
+func isPlaceholderSecret(s string) bool {
+	_, ok := placeholderSecrets[strings.ToLower(s)]
+	return ok
+}
+
+// Validate 启动前校验，必须在 applyDefaults 与环境变量覆盖之后调用。
+//
+// 返回值约定（同时产出 warnings 与 error，不是二选一）：
+//   - err 非 nil：硬性缺陷，调用方必须退出；用 errors.Join 聚合全部问题一次性输出，
+//     避免运维改一个字段重启一次。
+//   - warnings：可选功能降级提示，启动后由调用方记 warn 日志。
+//
+// 校验同时负责把非法但可恢复的字段归一化（如 log.level 非法时置为 info 并告警），
+// 保证后续消费方拿到的 Config 是自洽的。
+func (c *Config) Validate() (warnings []string, err error) {
+	var problems []error
+
+	// —— 安全相关：为空或占位值一律拒绝 ——
+	secret := strings.TrimSpace(c.JWT.Secret)
+	switch {
+	case secret == "":
+		problems = append(problems, errors.New("jwt.secret 未配置，可用环境变量 JWT_SECRET 注入"))
+	case len(secret) < 32:
+		problems = append(problems, fmt.Errorf("jwt.secret 长度不足 32 字节（当前 %d），弱密钥可伪造 token", len(secret)))
+	case isPlaceholderSecret(secret):
+		problems = append(problems, fmt.Errorf("jwt.secret 仍是占位值 %q，必须替换为随机串", secret))
+	}
+
+	// —— 数据库连接要素 ——
+	if c.Database.Host == "" {
+		problems = append(problems, errors.New("database.host 未配置，可用环境变量 DB_HOST 注入"))
+	}
+	if c.Database.User == "" {
+		problems = append(problems, errors.New("database.user 未配置，可用环境变量 DB_USER 注入"))
+	}
+	if c.Database.DBName == "" {
+		problems = append(problems, errors.New("database.dbname 未配置，可用环境变量 DB_NAME 注入"))
+	}
+	// 生产环境不允许空密码；开发环境只告警
+	if c.Database.Password == "" {
+		if strings.ToLower(c.Server.Mode) == "release" {
+			problems = append(problems, errors.New("database.password 为空：生产环境(server.mode=release)必须设置 DB_PASSWORD"))
+		} else {
+			warnings = append(warnings, "database.password 为空，仅建议本地开发环境使用")
+		}
+	}
+
+	// —— 存储类型必须合法；cos 必须带全凭据 ——
+	switch strings.ToLower(c.Storage.Type) {
+	case StorageLocal:
+		// 本地存储下 covers 目录承载全部图片落盘，不可写则上传链路全挂 → 硬失败
+		if err := ensureDirWritable(c.AI.Cover.CoversDir); err != nil {
+			problems = append(problems, fmt.Errorf("storage.type=local 但 covers 目录不可写(%s): %w", c.AI.Cover.CoversDir, err))
+		}
+	case StorageCos:
+		cos := c.Storage.Cos
+		if cos.SecretID == "" {
+			problems = append(problems, errors.New("storage.type=cos 但 cos.secret_id 为空，可用环境变量 COS_SECRET_ID 注入"))
+		}
+		if cos.SecretKey == "" {
+			problems = append(problems, errors.New("storage.type=cos 但 cos.secret_key 为空，可用环境变量 COS_SECRET_KEY 注入"))
+		}
+		if cos.Bucket == "" {
+			problems = append(problems, errors.New("storage.type=cos 但 cos.bucket 为空，可用环境变量 COS_BUCKET 注入"))
+		}
+		if cos.Region == "" {
+			problems = append(problems, errors.New("storage.type=cos 但 cos.region 为空，可用环境变量 COS_REGION 注入"))
+		}
+	default:
+		problems = append(problems, fmt.Errorf("storage.type 非法：%q，只支持 local / cos", c.Storage.Type))
+	}
+	// applyDefaults 已兜底为 5，此处为安全网：0 不代表"不限"，而是会被压到 2 MB
+	if c.Storage.MaxSize <= 0 {
+		problems = append(problems, errors.New("storage.max_size 必须大于 0"))
+	}
+
+	// 端口：0 表示让系统随机分配（测试/容器场景合法），仅拒绝负数和越界
+	if c.Server.Port < 0 || c.Server.Port > 65535 {
+		problems = append(problems, fmt.Errorf("server.port 非法：%d（0 表示随机分配）", c.Server.Port))
+	}
+
+	// —— AI 封面：按 Enabled 决定硬失败还是降级 ——
+	if c.AI.Cover.Enabled {
+		if c.AI.Cover.APIKey == "" {
+			problems = append(problems, errors.New("ai.cover.enabled=true 但 api_key 为空：用环境变量 DASHSCOPE_API_KEY 注入，或将 enabled 设为 false 关闭封面功能"))
+		}
+	} else if c.AI.Cover.APIKey == "" {
+		warnings = append(warnings, "ai.cover.enabled=false 且未配置 DASHSCOPE_API_KEY，AI 封面生成已关闭")
+	}
+
+	// —— log.level 非法则归一为 info 并告警（Validate 是唯一归一化点，logger 直接信任该值）——
+	switch strings.ToLower(c.Log.Level) {
+	case "debug", "info", "warn", "error":
+	default:
+		warnings = append(warnings, fmt.Sprintf("log.level 非法：%q，已归一为 info", c.Log.Level))
+		c.Log.Level = "info"
+	}
+
+	return warnings, errors.Join(problems...)
+}
+
+// ensureDirWritable 校验目录可创建且可写：创建目录后写一个临时文件再删除。
+func ensureDirWritable(dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".writetest-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	_ = f.Close()
+	return os.Remove(name)
 }

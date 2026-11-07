@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	"blog-backend/core"
 	"blog-backend/flag"
 	"blog-backend/initialize"
@@ -16,14 +19,21 @@ import (
 // @in header
 // @name Authorization
 func main() {
-	// 1. 加载配置
-	core.InitConf()
-	// 2. 初始化日志（zap + lumberjack 滚动落盘）
+	// 1. 加载配置：校验不通过直接退出，绝不带着空密钥/空 DSN 启动
+	warnings, err := core.InitConf()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "配置校验失败：")
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	// 2. 初始化日志（此前 global.Log 不可用，所以错误只能写 stderr）
 	core.InitLogger()
-	// 3. 连接数据库
+	// 3. 输出降级告警与生效配置摘要
+	core.LogConfig(warnings)
+	// 4. 连接数据库
 	initialize.InitGorm()
-	// 4. 处理命令行参数（-admin 重置管理员密码，无参数则继续）
+	// 5. 处理命令行参数（-admin 重置管理员密码，无参数则继续）
 	flag.InitFlag()
-	// 5. 初始化路由并启动服务器
+	// 6. 初始化路由并启动服务器
 	core.RunServer()
 }

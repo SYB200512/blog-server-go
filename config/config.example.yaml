@@ -2,8 +2,9 @@
 # 复制为 config/config.yaml 使用：cp config.example.yaml config.yaml
 # ⚠️ 敏感值一律不要写进任何入库文件，统一用环境变量注入（优先级：环境变量 > yaml）：
 #   DB_HOST / DB_PORT / DB_USER / DB_NAME / DB_PASSWORD
+#   CONFIG_PATH（配置文件路径，容器内工作目录不固定时使用）/ SERVER_PORT
 #   JWT_SECRET
-#   DASHSCOPE_API_KEY / DASHSCOPE_BASE / COVERS_DIR
+#   DASHSCOPE_API_KEY / DASHSCOPE_BASE / COVERS_DIR / COVER_ENABLED
 #   STORAGE_TYPE / COS_SECRET_ID / COS_SECRET_KEY / COS_BUCKET / COS_REGION / COS_DOMAIN / COS_PREFIX
 server:
   port: 8080
@@ -35,10 +36,12 @@ jwt:
   expire_hours: 24
 
 ai:
-  dashscope_api_key: ""   # ← 用环境变量 DASHSCOPE_API_KEY 注入
-  dashscope_base: "https://dashscope.aliyuncs.com"
-  covers_dir: "./covers"  # AI 生成的封面图存储目录
-  cover_timeout: 90       # 异步生成封面超时（秒）
+  cover:
+    enabled: true           # 开启后发文将异步生成封面；设 false 关闭（无需配置 api_key）
+    api_key: ""             # ← 用环境变量 DASHSCOPE_API_KEY 注入；enabled=true 时必填，否则启动失败
+    base_url: "https://dashscope.aliyuncs.com"
+    covers_dir: "./covers"  # 本地存储时封面/图片落盘目录，cos 模式不使用
+    cover_timeout: 90       # 异步生成封面超时（秒）
 
 # 图片存储：local 存本地 covers 目录，cos 存腾讯云对象存储
 storage:
@@ -53,8 +56,8 @@ storage:
     prefix: "blog"        # ← 环境变量 COS_PREFIX，对象键前缀
 
 log:
-  level: debug # debug / info / warn / error
+  level: info # debug / info / warn / error（生产用 info，避免 debug 日志刷屏）
   director: logs # 日志输出目录（.gitignore 已忽略 /logs/）
-  max_size: 10 # 单个日志文件大小上限（MB），超过自动切割
-  max_backups: 7 # 保留的旧日志文件数量
-  max_age: 30 # 日志文件最长保留天数
+  max_size: 2 # 单个日志文件大小上限（MB），超过自动切割
+  max_backups: 3 # 保留的旧日志文件数量
+  max_age: 7 # 日志文件最长保留天数

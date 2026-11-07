@@ -32,7 +32,7 @@ func (*Local) UploadImage(ctx context.Context, file *multipart.FileHeader) (stri
 
 // UploadBytes 将字节写入本地 covers 目录
 func (*Local) UploadBytes(_ context.Context, data []byte, filename string) (string, string, error) {
-	dir := global.Config.AI.CoversDir
+	dir := global.Config.AI.Cover.CoversDir
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", "", err
 	}
@@ -45,5 +45,5 @@ func (*Local) UploadBytes(_ context.Context, data []byte, filename string) (stri
 
 // Delete 删除本地文件
 func (*Local) Delete(_ context.Context, key string) error {
-	return os.Remove(filepath.Join(global.Config.AI.CoversDir, filepath.Base(key)))
+	return os.Remove(filepath.Join(global.Config.AI.Cover.CoversDir, filepath.Base(key)))
 }

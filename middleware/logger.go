@@ -22,8 +22,8 @@ func GinLogger() gin.HandlerFunc {
 
 		c.Next()
 
-		// 跳过 swagger 文档静态资源
-		if strings.HasPrefix(path, "/swagger") {
+		// 跳过 swagger 文档静态资源与健康检查：前者无业务价值，后者被 systemd/监控反复 ping，纯刷量
+		if strings.HasPrefix(path, "/swagger") || path == "/api/health" {
 			return
 		}
 

@@ -28,10 +28,10 @@ type aiMessageContent struct {
 // generateArticleCover 调用 Z-Image-Turbo 按文章标题/摘要生成封面，
 // 下载保存到本地 covers 目录，返回可访问的相对路径（如 /api/v1/covers/cover_xxx.png）。
 // ctx 用于取消请求与下载：调用方（异步任务）自己控制超时预算。
-// 未配置 DASHSCOPE_API_KEY 时返回空串，由调用方决定是否兜底。
+// 启动时 Validate 已保证 enabled=true 时 api_key 必不为空，这里仍做防御性检查。
 func generateArticleCover(ctx context.Context, title, summary string) (string, error) {
 	cfg := global.Config
-	if cfg == nil || cfg.AI.DashScopeAPIKey == "" {
+	if cfg == nil || cfg.AI.Cover.APIKey == "" {
 		return "", nil
 	}
 
@@ -54,7 +54,7 @@ func generateArticleCover(ctx context.Context, title, summary string) (string, e
 		return "", err
 	}
 
-	url := strings.TrimRight(cfg.AI.DashScopeBase, "/") +
+	url := strings.TrimRight(cfg.AI.Cover.BaseURL, "/") +
 		"/api/v1/services/aigc/multimodal-generation/generation"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
@@ -62,7 +62,7 @@ func generateArticleCover(ctx context.Context, title, summary string) (string, e
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+cfg.AI.DashScopeAPIKey)
+	req.Header.Set("Authorization", "Bearer "+cfg.AI.Cover.APIKey)
 
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)

@@ -4,26 +4,45 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 
 	"blog-backend/config"
 	"blog-backend/global"
 )
 
-// InitConf 读取 config/config.yaml 初始化全局配置
-func InitConf() {
-	data, err := os.ReadFile("config/config.yaml")
+// 默认配置文件路径；容器内工作目录不固定，可用 CONFIG_PATH 覆盖
+const defaultConfigPath = "config/config.yaml"
+
+// InitConf 读取配置并做启动前校验。
+// 顺序固定：读取 → applyDefaults → 环境变量覆盖 → Validate → 写入 global.Config。
+// warnings 是可选功能降级提示；error 非 nil 表示硬性缺陷，调用方必须退出。
+func InitConf() (warnings []string, err error) {
+	path := os.Getenv("CONFIG_PATH")
+	if path == "" {
+		path = defaultConfigPath
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
-		panic(fmt.Sprintf("读取配置文件失败: %v", err))
+		return nil, fmt.Errorf("读取配置文件失败(%s): %w", path, err)
 	}
 	cfg := &config.Config{}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
-		panic(fmt.Sprintf("解析配置文件失败: %v", err))
+		return nil, fmt.Errorf("解析配置文件失败(%s): %w", path, err)
 	}
 	applyDefaults(cfg)
-	overrideWithEnv(cfg)
+	// 必须在环境变量覆盖之后校验，否则只用 env 注入的密钥看不到
+	if err := overrideWithEnv(cfg); err != nil {
+		return nil, err
+	}
+	warnings, err = cfg.Validate()
+	if err != nil {
+		return warnings, err
+	}
 	global.Config = cfg
+	return warnings, nil
 }
 
 // applyDefaults 使用默认配置作为兜底
@@ -40,11 +59,11 @@ func applyDefaults(cfg *config.Config) {
 	if cfg.JWT.ExpireHours == 0 {
 		cfg.JWT.ExpireHours = 24
 	}
-	if cfg.AI.DashScopeBase == "" {
-		cfg.AI.DashScopeBase = "https://dashscope.aliyuncs.com"
+	if cfg.AI.Cover.BaseURL == "" {
+		cfg.AI.Cover.BaseURL = "https://dashscope.aliyuncs.com"
 	}
-	if cfg.AI.CoversDir == "" {
-		cfg.AI.CoversDir = "./covers"
+	if cfg.AI.Cover.CoversDir == "" {
+		cfg.AI.Cover.CoversDir = "./covers"
 	}
 	if cfg.Storage.Type == "" {
 		cfg.Storage.Type = "local"
@@ -93,15 +112,25 @@ func applyDefaults(cfg *config.Config) {
 	}
 }
 
-// overrideWithEnv 用环境变量覆盖敏感配置，避免把密码/密钥写进仓库。优先级：环境变量 > config.yaml
-func overrideWithEnv(cfg *config.Config) {
+// overrideWithEnv 用环境变量覆盖配置，优先级：环境变量 > config.yaml。
+// 数字类变量解析失败必须报错，不能被静默忽略。
+func overrideWithEnv(cfg *config.Config) error {
 	if host := os.Getenv("DB_HOST"); host != "" {
 		cfg.Database.Host = host
 	}
 	if port := os.Getenv("DB_PORT"); port != "" {
-		if p, err := strconv.Atoi(port); err == nil {
-			cfg.Database.Port = p
+		p, err := strconv.Atoi(port)
+		if err != nil {
+			return fmt.Errorf("环境变量 DB_PORT 非法：%q", port)
 		}
+		cfg.Database.Port = p
+	}
+	if port := os.Getenv("SERVER_PORT"); port != "" {
+		p, err := strconv.Atoi(port)
+		if err != nil {
+			return fmt.Errorf("环境变量 SERVER_PORT 非法：%q", port)
+		}
+		cfg.Server.Port = p
 	}
 	if user := os.Getenv("DB_USER"); user != "" {
 		cfg.Database.User = user
@@ -117,13 +146,17 @@ func overrideWithEnv(cfg *config.Config) {
 	}
 	// AI 相关：DASHSCOPE_API_KEY 等优先用环境变量，避免把 key 写进仓库
 	if key := os.Getenv("DASHSCOPE_API_KEY"); key != "" {
-		cfg.AI.DashScopeAPIKey = key
+		cfg.AI.Cover.APIKey = key
 	}
 	if base := os.Getenv("DASHSCOPE_BASE"); base != "" {
-		cfg.AI.DashScopeBase = base
+		cfg.AI.Cover.BaseURL = base
 	}
 	if dir := os.Getenv("COVERS_DIR"); dir != "" {
-		cfg.AI.CoversDir = dir
+		cfg.AI.Cover.CoversDir = dir
+	}
+	// COVER_ENABLED=false 显式关闭封面生成（默认由 yaml 的 ai.cover.enabled 决定）
+	if v := os.Getenv("COVER_ENABLED"); v != "" {
+		cfg.AI.Cover.Enabled = strings.EqualFold(v, "true") || v == "1"
 	}
 	// 图片存储：local / cos，COS 凭据只用环境变量注入
 	if t := os.Getenv("STORAGE_TYPE"); t != "" {
@@ -147,4 +180,24 @@ func overrideWithEnv(cfg *config.Config) {
 	if prefix := os.Getenv("COS_PREFIX"); prefix != "" {
 		cfg.Storage.Cos.Prefix = prefix
 	}
+	return nil
+}
+
+// LogConfig 在 logger 就绪后输出降级告警与生效配置摘要，
+// 便于确认环境变量是否真的覆盖成功（此前 global.Log 尚不可用）。
+func LogConfig(warnings []string) {
+	for _, w := range warnings {
+		global.Log.Warn("配置告警", zap.String("detail", w))
+	}
+	coverStatus := "disabled"
+	if global.Config.AI.Cover.Enabled {
+		coverStatus = "enabled"
+	}
+	global.Log.Info("配置校验通过",
+		zap.Int("port", global.Config.Server.Port),
+		zap.String("storage", strings.ToLower(global.Config.Storage.Type)),
+		zap.String("ai_cover", coverStatus),
+		zap.String("db", fmt.Sprintf("%s:%d/%s",
+			global.Config.Database.Host, global.Config.Database.Port, global.Config.Database.DBName)),
+	)
 }

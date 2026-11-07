@@ -108,10 +108,14 @@ func (s *ArticleService) CreateArticle(ctx context.Context, req *request.Article
 // 用户发布文章后可能立刻关闭页面，请求 ctx 会被取消，但封面生成属于
 // 后台任务，必须独立于请求生命周期，因此自己派生一个超时预算。
 func (s *ArticleService) generateCoverAsync(id uint64, title, summary string) {
+	// 封面功能未开启时直接跳过，避免无意义的协程与日志
+	if !global.Config.AI.Cover.Enabled {
+		return
+	}
 	// 异步任务独立于请求生命周期，用户断开后仍需完成
 	timeout := 90 * time.Second
-	if global.Config.AI.CoverTimeout > 0 {
-		timeout = time.Duration(global.Config.AI.CoverTimeout) * time.Second
+	if global.Config.AI.Cover.CoverTimeout > 0 {
+		timeout = time.Duration(global.Config.AI.Cover.CoverTimeout) * time.Second
 	}
 	go func() {
 		// 先建 ctx 再 defer cancel，保证协程退出时释放定时器
