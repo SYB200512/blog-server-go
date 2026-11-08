@@ -14,6 +14,7 @@ import (
 
 	"blog-backend/global"
 	"blog-backend/initialize"
+	"blog-backend/service"
 )
 
 // RunServer 初始化路由并启动 HTTP 服务器，收到退出信号后优雅停机
@@ -62,6 +63,14 @@ func RunServer() {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		global.Log.Error("服务关闭失败", zap.Error(err))
+	}
+
+	// 停机收尾：先把内存中尚未落库的浏览量回写 MySQL，再关缓存连接
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	service.FlushArticleViews(flushCtx)
+	flushCancel()
+	if global.Redis != nil {
+		_ = global.Redis.Close()
 	}
 	global.Log.Info("服务已退出")
 }

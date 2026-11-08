@@ -32,6 +32,8 @@ func main() {
 	core.LogConfig(warnings)
 	// 4. 连接数据库
 	initialize.InitGorm()
+	// 4.1 连接缓存：探测失败仅告警，服务降级为直连数据库继续运行
+	initialize.InitRedis()
 	// 5. 处理命令行参数（-admin 重置管理员密码，无参数则继续）
 	flag.InitFlag()
 	// 6. 初始化路由并启动服务器

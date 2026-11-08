@@ -110,6 +110,26 @@ func applyDefaults(cfg *config.Config) {
 	if cfg.Database.ConnMaxIdleTime == 0 {
 		cfg.Database.ConnMaxIdleTime = 10
 	}
+
+	// Redis 默认值：短超时是缓存的底线，宁可 miss 走 DB 也不能拖长请求
+	if cfg.Redis.DB == 0 {
+		cfg.Redis.DB = 1
+	}
+	if cfg.Redis.PoolSize == 0 {
+		cfg.Redis.PoolSize = 10
+	}
+	if cfg.Redis.DialTimeout == 0 {
+		cfg.Redis.DialTimeout = 2
+	}
+	if cfg.Redis.ReadTimeout == 0 {
+		cfg.Redis.ReadTimeout = 300
+	}
+	if cfg.Redis.WriteTimeout == 0 {
+		cfg.Redis.WriteTimeout = 300
+	}
+	if cfg.Redis.KeyPrefix == "" {
+		cfg.Redis.KeyPrefix = "blog"
+	}
 }
 
 // overrideWithEnv 用环境变量覆盖配置，优先级：环境变量 > config.yaml。
@@ -140,6 +160,20 @@ func overrideWithEnv(cfg *config.Config) error {
 	}
 	if pwd := os.Getenv("DB_PASSWORD"); pwd != "" {
 		cfg.Database.Password = pwd
+	}
+	// Redis：密码只允许环境变量注入，不写进 yaml
+	if addr := os.Getenv("REDIS_ADDR"); addr != "" {
+		cfg.Redis.Addr = addr
+	}
+	if pwd := os.Getenv("REDIS_PASSWORD"); pwd != "" {
+		cfg.Redis.Password = pwd
+	}
+	if db := os.Getenv("REDIS_DB"); db != "" {
+		d, err := strconv.Atoi(db)
+		if err != nil {
+			return fmt.Errorf("环境变量 REDIS_DB 非法：%q", db)
+		}
+		cfg.Redis.DB = d
 	}
 	if secret := os.Getenv("JWT_SECRET"); secret != "" {
 		cfg.JWT.Secret = secret
@@ -199,5 +233,6 @@ func LogConfig(warnings []string) {
 		zap.String("ai_cover", coverStatus),
 		zap.String("db", fmt.Sprintf("%s:%d/%s",
 			global.Config.Database.Host, global.Config.Database.Port, global.Config.Database.DBName)),
+		zap.String("redis", fmt.Sprintf("%s/%d", global.Config.Redis.Addr, global.Config.Redis.DB)),
 	)
 }

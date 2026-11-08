@@ -11,6 +11,7 @@ import (
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Database DatabaseConfig `yaml:"database"`
+	Redis    RedisConfig    `yaml:"redis"`
 	JWT      JWTConfig      `yaml:"jwt"`
 	AI       AIConfig       `yaml:"ai"`
 	Storage  StorageConfig  `yaml:"storage"`
@@ -49,6 +50,19 @@ type DatabaseConfig struct {
 type JWTConfig struct {
 	Secret      string `yaml:"secret"`
 	ExpireHours int    `yaml:"expire_hours"`
+}
+
+// RedisConfig 缓存配置。Redis 是硬依赖（必须配置 addr），但运行期故障不致命：
+// 缓存层 fail-open + 熔断会降级为直连数据库，Redis 恢复后自动生效。
+type RedisConfig struct {
+	Addr         string `yaml:"addr"`          // 如 127.0.0.1:6379
+	Password     string `yaml:"password"`      // 环境变量 REDIS_PASSWORD 注入
+	DB           int    `yaml:"db"`            // 逻辑库索引，默认 1，与其他应用隔离
+	PoolSize     int    `yaml:"pool_size"`     // 连接池大小，默认 10
+	DialTimeout  int    `yaml:"dial_timeout"`  // 连接建立上限（秒），默认 2
+	ReadTimeout  int    `yaml:"read_timeout"`  // 单次读上限（毫秒），默认 300：缓存慢不允许拖长请求
+	WriteTimeout int    `yaml:"write_timeout"` // 单次写上限（毫秒），默认 300
+	KeyPrefix    string `yaml:"key_prefix"`    // key 前缀，默认 blog
 }
 
 // AIConfig AI 相关配置
@@ -158,6 +172,17 @@ func (c *Config) Validate() (warnings []string, err error) {
 		} else {
 			warnings = append(warnings, "database.password 为空，仅建议本地开发环境使用")
 		}
+	}
+
+	// —— Redis：addr 缺失属于配置缺陷（硬失败）；连接失败不在此校验，由运行期降级兜底 ——
+	if strings.TrimSpace(c.Redis.Addr) == "" {
+		problems = append(problems, errors.New("redis.addr 未配置，可用环境变量 REDIS_ADDR 注入"))
+	}
+	if c.Redis.DB < 0 || c.Redis.DB > 15 {
+		problems = append(problems, fmt.Errorf("redis.db 非法：%d（Redis 默认 16 个逻辑库，0-15）", c.Redis.DB))
+	}
+	if c.Redis.Password == "" && strings.ToLower(c.Server.Mode) == "release" {
+		warnings = append(warnings, "redis.password 为空：仅建议同机/内网部署使用")
 	}
 
 	// —— 存储类型必须合法；cos 必须带全凭据 ——

@@ -149,6 +149,29 @@ func IncrementViews(ctx context.Context, id uint64) error {
 		UpdateColumn("views", gorm.Expr("views + 1")).Error)
 }
 
+// GetArticleContentByID 仅查询已发布文章的正文（主键查询，无 Preload）。
+// 供详情接口在 meta 缓存命中后拼装完整文章：meta 走 Redis，正文走 MySQL，
+// 既避免 longtext 大字段进缓存，又保证正文永远是最新值。
+func GetArticleContentByID(ctx context.Context, id uint64) (string, error) {
+	var row struct {
+		Content string `gorm:"column:content"`
+	}
+	err := global.DB.WithContext(ctx).Model(&database.Article{}).
+		Select("content").Where("id = ? AND status = 1", id).
+		Take(&row).Error
+	if err != nil {
+		return "", wrapErr("get article content", err)
+	}
+	return row.Content, nil
+}
+
+// SetArticleViews 回写浏览量绝对值（Redis 计数定时落库）。
+// GREATEST 防回退：缓存计数若因 key 被淘汰等原因小于库中值，不允许把库里的值写小。
+func SetArticleViews(ctx context.Context, id uint64, views int64) error {
+	return wrapErr("set article views", global.DB.WithContext(ctx).Model(&database.Article{}).Where("id = ?", id).
+		UpdateColumn("views", gorm.Expr("GREATEST(views, ?)", views)).Error)
+}
+
 // ListTopArticles 置顶文章列表
 func ListTopArticles(ctx context.Context) ([]database.Article, error) {
 	var articles []database.Article

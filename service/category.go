@@ -3,27 +3,57 @@ package service
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 
 	"blog-backend/dao"
 	"blog-backend/global"
 	"blog-backend/model/database"
 	"blog-backend/model/errs"
 	"blog-backend/model/request"
+	"blog-backend/utils/cache"
 )
 
-// CategoryService 分类/标签业务
-type CategoryService struct{}
+// categoryListTTL 分类/标签列表缓存 TTL：长 TTL + 写失效双保险
+const categoryListTTL = 30 * time.Minute
 
-// ListCategories 分类列表
+// CategoryService 分类/标签业务
+type CategoryService struct {
+	// group 合并并发回源：同一 key 的缓存击穿流量只查一次 DB
+	group singleflight.Group
+}
+
+// ListCategories 分类列表：整包缓存 + singleflight 回源
 func (s *CategoryService) ListCategories(ctx context.Context) ([]database.Category, error) {
-	categories, err := dao.ListCategories(ctx)
+	key := cache.CategoryListKey()
+
+	var cached []database.Category
+	if cache.Get(ctx, key, &cached) == cache.Hit {
+		return cached, nil
+	}
+
+	v, err, _ := s.group.Do(key, func() (any, error) {
+		// 二次检查：等待 singleflight 期间可能已被其他请求回填
+		var c []database.Category
+		if cache.Get(ctx, key, &c) == cache.Hit {
+			return c, nil
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		categories, err := dao.ListCategories(dbCtx)
+		if err != nil {
+			return nil, err
+		}
+		cache.Set(ctx, key, categories, cache.WithJitter(categoryListTTL))
+		return categories, nil
+	})
 	if err != nil {
 		global.Log.Error("查询分类列表失败", zap.Error(err))
 		return nil, err
 	}
-	return categories, nil
+	return v.([]database.Category), nil
 }
 
 // CreateCategory 创建分类
@@ -44,6 +74,8 @@ func (s *CategoryService) CreateCategory(ctx context.Context, req *request.Categ
 		}
 		return nil, err
 	}
+	// 事务提交成功后失效列表缓存
+	cache.Del(ctx, cache.CategoryListKey())
 	return category, nil
 }
 
@@ -68,6 +100,8 @@ func (s *CategoryService) UpdateCategory(ctx context.Context, id uint64, req *re
 		global.Log.Error("更新分类失败", zap.Uint64("category_id", id), zap.Error(err))
 		return nil, err
 	}
+	// 事务提交成功后失效列表缓存
+	cache.Del(ctx, cache.CategoryListKey())
 	return category, nil
 }
 
@@ -85,17 +119,39 @@ func (s *CategoryService) DeleteCategory(ctx context.Context, id uint64) error {
 		global.Log.Error("删除分类失败", zap.Uint64("category_id", id), zap.Error(err))
 		return err
 	}
+	cache.Del(ctx, cache.CategoryListKey())
 	return nil
 }
 
-// ListTags 标签列表
+// ListTags 标签列表：整包缓存 + singleflight 回源
 func (s *CategoryService) ListTags(ctx context.Context) ([]database.Tag, error) {
-	tags, err := dao.ListTags(ctx)
+	key := cache.TagListKey()
+
+	var cached []database.Tag
+	if cache.Get(ctx, key, &cached) == cache.Hit {
+		return cached, nil
+	}
+
+	v, err, _ := s.group.Do(key, func() (any, error) {
+		// 二次检查
+		var t []database.Tag
+		if cache.Get(ctx, key, &t) == cache.Hit {
+			return t, nil
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		tags, err := dao.ListTags(dbCtx)
+		if err != nil {
+			return nil, err
+		}
+		cache.Set(ctx, key, tags, cache.WithJitter(categoryListTTL))
+		return tags, nil
+	})
 	if err != nil {
 		global.Log.Error("查询标签列表失败", zap.Error(err))
 		return nil, err
 	}
-	return tags, nil
+	return v.([]database.Tag), nil
 }
 
 // CreateTag 创建标签
@@ -108,6 +164,7 @@ func (s *CategoryService) CreateTag(ctx context.Context, req *request.TagCreateR
 		}
 		return nil, err
 	}
+	cache.Del(ctx, cache.TagListKey())
 	return tag, nil
 }
 
@@ -125,5 +182,6 @@ func (s *CategoryService) DeleteTag(ctx context.Context, id uint64) error {
 		global.Log.Error("删除标签失败", zap.Uint64("tag_id", id), zap.Error(err))
 		return err
 	}
+	cache.Del(ctx, cache.TagListKey())
 	return nil
 }
