@@ -17,7 +17,9 @@ import (
 // MySQL 挂了服务没有任何意义，但 Redis 挂了博客仍可降级为直连数据库；
 // go-redis 内部会自动重连，配合 cache 层的熔断半开探测，Redis 恢复后缓存自动生效。
 func InitRedis() {
+	// 从全局配置中获取 Redis 配置
 	cfg := global.Config.Redis
+	// 创建 Redis 客户端实例：后续操作通过该实例进行
 	client := redis.NewClient(&redis.Options{
 		Addr:         cfg.Addr,
 		Password:     cfg.Password,

@@ -13,7 +13,7 @@ import (
 	"blog-backend/router"
 )
 
-// InitRouter 初始化路由：挂载静态文件、创建公开/后台两个路由组
+// InitRouter 初始化路由：挂载中间件、静态挂载静态文件、创建公开/后台两个路由组
 func InitRouter() *gin.Engine {
 	r := gin.New()
 

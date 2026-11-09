@@ -28,19 +28,26 @@ func InitConf() (warnings []string, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("读取配置文件失败(%s): %w", path, err)
 	}
+	// 解析配置文件
 	cfg := &config.Config{}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败(%s): %w", path, err)
 	}
+
+	// 应用默认配置：避免 yaml 漏配时出现 nil 值
 	applyDefaults(cfg)
 	// 必须在环境变量覆盖之后校验，否则只用 env 注入的密钥看不到
 	if err := overrideWithEnv(cfg); err != nil {
 		return nil, err
 	}
+
+	// 校验配置：检查必填项是否为空，密钥是否有效等
 	warnings, err = cfg.Validate()
 	if err != nil {
 		return warnings, err
 	}
+
+	// 写入全局配置实例：后续代码可直接访问
 	global.Config = cfg
 	return warnings, nil
 }

@@ -113,10 +113,15 @@ var (
 
 // LogHitRateLoop 周期性输出缓存命中统计；无请求时不打日志。由 InitRedis 启动。
 func LogHitRateLoop(interval time.Duration) {
+	// 定时器：每 interval 时间输出一次命中统计
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	// 循环：每 interval 时间输出一次命中统计
 	for range ticker.C {
+
+		// 交换当前命中统计值：后续操作会更新该值
 		h := hits.Swap(0)
+		// 交换当前未命中统计值：后续操作会更新该值
 		m := misses.Swap(0)
 		if h+m == 0 {
 			continue

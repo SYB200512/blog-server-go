@@ -27,6 +27,7 @@ func InitLogger() {
 		level = zapcore.ErrorLevel
 	}
 
+	// 日志编码配置
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "time",
 		LevelKey:       "level",
@@ -49,7 +50,7 @@ func InitLogger() {
 		MaxAge:     cfg.MaxAge,
 		LocalTime:  true,
 	}
-
+	// 文件日志核心：按 JSON 格式写入 lumberjack 日志文件
 	fileCore := zapcore.NewCore(
 		zapcore.NewJSONEncoder(encoderConfig),
 		zapcore.AddSync(writer),
@@ -69,6 +70,7 @@ func InitLogger() {
 		cores = append(cores, consoleCore)
 	}
 
+	// 初始化 zap 日志实例：当有日志时，将日志分发给所有core,core更加level进行处理
 	global.Log = zap.New(
 		zapcore.NewTee(cores...),
 		zap.AddCaller(), // 日志中带上调用位置的 文件名:行号

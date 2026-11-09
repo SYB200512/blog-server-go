@@ -23,6 +23,7 @@ func InitGorm() {
 	if err != nil {
 		global.Log.Fatal("初始化数据库失败", zap.Error(err))
 	}
+	// 获取数据库连接池实例：后续操作通过该实例进行
 	sqlDB, err := db.DB()
 	if err != nil {
 		global.Log.Fatal("获取数据库连接池失败", zap.Error(err))
@@ -47,6 +48,7 @@ func InitGorm() {
 		global.Log.Fatal("数据库启动探测失败", zap.Error(err))
 	}
 
+	// 写入全局数据库实例：后续代码可直接访问
 	global.DB = db
 
 	// P0：定期打印连接池状态，方便观察 WaitCount 是否持续增长
