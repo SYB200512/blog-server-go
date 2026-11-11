@@ -17,7 +17,7 @@ import (
 
 // @securityDefinitions.apikey BearerAuth
 // @in header
-// @name Authorization
+// @name x-access-token
 func main() {
 	// 1. 加载配置：校验不通过直接退出，绝不带着空密钥/空 DSN 启动
 	warnings, err := core.InitConf()

@@ -63,8 +63,14 @@ func applyDefaults(cfg *config.Config) {
 	if cfg.Database.Charset == "" {
 		cfg.Database.Charset = "utf8mb4"
 	}
-	if cfg.JWT.ExpireHours == 0 {
-		cfg.JWT.ExpireHours = 24
+	if cfg.JWT.AccessTokenExpiryTime == "" {
+		cfg.JWT.AccessTokenExpiryTime = "30m"
+	}
+	if cfg.JWT.RefreshTokenExpiryTime == "" {
+		cfg.JWT.RefreshTokenExpiryTime = "168h"
+	}
+	if cfg.JWT.Issuer == "" {
+		cfg.JWT.Issuer = "blog-backend"
 	}
 	if cfg.AI.Cover.BaseURL == "" {
 		cfg.AI.Cover.BaseURL = "https://dashscope.aliyuncs.com"
@@ -182,8 +188,11 @@ func overrideWithEnv(cfg *config.Config) error {
 		}
 		cfg.Redis.DB = d
 	}
-	if secret := os.Getenv("JWT_SECRET"); secret != "" {
-		cfg.JWT.Secret = secret
+	if secret := os.Getenv("JWT_ACCESS_SECRET"); secret != "" {
+		cfg.JWT.AccessTokenSecret = secret
+	}
+	if secret := os.Getenv("JWT_REFRESH_SECRET"); secret != "" {
+		cfg.JWT.RefreshTokenSecret = secret
 	}
 	// AI 相关：DASHSCOPE_API_KEY 等优先用环境变量，避免把 key 写进仓库
 	if key := os.Getenv("DASHSCOPE_API_KEY"); key != "" {

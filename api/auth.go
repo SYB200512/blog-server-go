@@ -5,6 +5,7 @@ import (
 
 	"blog-backend/model/request"
 	"blog-backend/model/response"
+	"blog-backend/utils"
 )
 
 // AuthApi 认证接口
@@ -26,12 +27,32 @@ func (a *AuthApi) Login(c *gin.Context) {
 		response.InvalidParam(c, "用户名和密码不能为空")
 		return
 	}
-	resp, err := authService.Login(c.Request.Context(), &req)
+	result, err := authService.Login(c.Request.Context(), &req)
 	if err != nil {
 		response.FromError(c, err)
 		return
 	}
-	response.Success(c, resp)
+	// refresh token 只写入 HttpOnly Cookie，响应体里不出现
+	utils.SetRefreshToken(c, result.RefreshToken, int(result.RefreshTTL.Seconds()))
+	response.Success(c, &response.LoginResponse{
+		AccessToken:          result.AccessToken,
+		AccessTokenExpiresAt: result.ExpiresAt.UnixMilli(),
+		User:                 result.User,
+	})
+}
+
+// Logout 退出登录
+// @Summary 退出登录
+// @Tags 认证
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} response.Response "成功"
+// @Router /api/v1/auth/logout [post]
+// @Id auth_logout
+func (a *AuthApi) Logout(c *gin.Context) {
+	authService.Logout(c.Request.Context(), utils.GetRefreshToken(c))
+	utils.ClearRefreshToken(c)
+	response.Success(c, nil)
 }
 
 // GetProfile 获取当前用户信息

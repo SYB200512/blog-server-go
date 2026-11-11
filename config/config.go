@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // Config 全局配置
@@ -47,9 +48,15 @@ type DatabaseConfig struct {
 	ConnMaxIdleTime int `yaml:"conn_max_idle_time"` // 高峰期后回收空闲连接
 }
 
+// JWTConfig 双 token 方案：access 短期、refresh 长期。
+// 两个密钥必须不同，否则 refresh token 可能被当作 access token 接受。
 type JWTConfig struct {
-	Secret      string `yaml:"secret"`
-	ExpireHours int    `yaml:"expire_hours"`
+	AccessTokenSecret      string `yaml:"access_token_secret"`
+	RefreshTokenSecret     string `yaml:"refresh_token_secret"`
+	AccessTokenExpiryTime  string `yaml:"access_token_expiry_time"`  // Go duration，如 30m
+	RefreshTokenExpiryTime string `yaml:"refresh_token_expiry_time"` // Go duration，如 168h
+	Issuer                 string `yaml:"issuer"`
+	CookieSecure           bool   `yaml:"cookie_secure"` // 生产 HTTPS 环境必须为 true
 }
 
 // RedisConfig 缓存配置。Redis 是硬依赖（必须配置 addr），但运行期故障不致命：
@@ -145,14 +152,34 @@ func (c *Config) Validate() (warnings []string, err error) {
 	var problems []error
 
 	// —— 安全相关：为空或占位值一律拒绝 ——
-	secret := strings.TrimSpace(c.JWT.Secret)
-	switch {
-	case secret == "":
-		problems = append(problems, errors.New("jwt.secret 未配置，可用环境变量 JWT_SECRET 注入"))
-	case len(secret) < 32:
-		problems = append(problems, fmt.Errorf("jwt.secret 长度不足 32 字节（当前 %d），弱密钥可伪造 token", len(secret)))
-	case isPlaceholderSecret(secret):
-		problems = append(problems, fmt.Errorf("jwt.secret 仍是占位值 %q，必须替换为随机串", secret))
+	accessSecret := strings.TrimSpace(c.JWT.AccessTokenSecret)
+	refreshSecret := strings.TrimSpace(c.JWT.RefreshTokenSecret)
+	for name, item := range map[string]struct{ value, env string }{
+		"jwt.access_token_secret":  {accessSecret, "JWT_ACCESS_SECRET"},
+		"jwt.refresh_token_secret": {refreshSecret, "JWT_REFRESH_SECRET"},
+	} {
+		switch {
+		case item.value == "":
+			problems = append(problems, fmt.Errorf("%s 未配置，可用环境变量 %s 注入", name, item.env))
+		case len(item.value) < 32:
+			problems = append(problems, fmt.Errorf("%s 长度不足 32 字节（当前 %d），弱密钥可伪造 token", name, len(item.value)))
+		case isPlaceholderSecret(item.value):
+			problems = append(problems, fmt.Errorf("%s 仍是占位值 %q，必须替换为随机串", name, item.value))
+		}
+	}
+	if accessSecret != "" && accessSecret == refreshSecret {
+		problems = append(problems, errors.New("jwt.access_token_secret 与 jwt.refresh_token_secret 不能相同"))
+	}
+	accessTTL, accessErr := time.ParseDuration(c.JWT.AccessTokenExpiryTime)
+	if accessErr != nil {
+		problems = append(problems, fmt.Errorf("jwt.access_token_expiry_time 非法：%v（示例 30m）", accessErr))
+	}
+	refreshTTL, refreshErr := time.ParseDuration(c.JWT.RefreshTokenExpiryTime)
+	if refreshErr != nil {
+		problems = append(problems, fmt.Errorf("jwt.refresh_token_expiry_time 非法：%v（示例 168h）", refreshErr))
+	}
+	if accessErr == nil && refreshErr == nil && accessTTL >= refreshTTL {
+		problems = append(problems, errors.New("jwt.access_token_expiry_time 必须小于 jwt.refresh_token_expiry_time"))
 	}
 
 	// —— 数据库连接要素 ——

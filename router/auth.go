@@ -15,6 +15,7 @@ func (r *AuthRouter) InitAuthRouter(public *gin.RouterGroup) {
 	auth := public.Group("/auth")
 	{
 		auth.POST("/login", api.ApiGroupApp.AuthApi.Login)
+		auth.POST("/logout", api.ApiGroupApp.AuthApi.Logout)
 		auth.GET("/profile", middleware.JWTAuth(), api.ApiGroupApp.AuthApi.GetProfile)
 	}
 }
