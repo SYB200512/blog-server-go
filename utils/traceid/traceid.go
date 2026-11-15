@@ -14,6 +14,7 @@ type ctxKey struct{}
 // With 生成 trace id 并写入 ctx
 func With(ctx context.Context) context.Context {
 	var buf [16]byte
+	// 生成随机数：确保 trace id 随机性，避免冲突
 	if _, err := rand.Read(buf[:]); err != nil {
 		// 随机源异常时退化为时间戳，保证链路仍有标识
 		return context.WithValue(ctx, ctxKey{}, strconv.FormatInt(time.Now().UnixNano(), 10))

@@ -27,10 +27,12 @@ type ArticleApi struct{}
 // @Id article_list
 func (a *ArticleApi) ListArticles(c *gin.Context) {
 	var q request.ArticleQuery
+	// 绑定查询参数
 	if err := c.ShouldBindQuery(&q); err != nil {
 		response.InvalidParam(c, "查询参数错误")
 		return
 	}
+	// 调用服务层获取文章列表
 	result, err := articleService.ListArticles(c.Request.Context(), &q)
 	if err != nil {
 		response.FromError(c, err)
@@ -49,6 +51,7 @@ func (a *ArticleApi) ListArticles(c *gin.Context) {
 // @Router /api/v1/articles/{id} [get]
 // @Id article_get
 func (a *ArticleApi) GetArticle(c *gin.Context) {
+	//Param:拿到请求参数id，拿到的是string, strconv.ParseUint转换为uint64
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		response.InvalidParam(c, "无效的文章 ID")

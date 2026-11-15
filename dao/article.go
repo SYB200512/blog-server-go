@@ -26,12 +26,15 @@ func CountArticles(ctx context.Context, status *int8) (int64, error) {
 // WithContext(ctx)：SQL 继承请求的取消与超时，客户端断开时会中断查询。
 func ListArticles(ctx context.Context, p *request.PageParams, keyword string, categoryID, tagID uint64, status *int8, admin bool) ([]database.Article, int64, error) {
 	var articles []database.Article
+	//构建查询条件，model(&database.Article{})表示查询文章表
 	query := global.DB.WithContext(ctx).Model(&database.Article{})
-
+	//所有的if都是在构造查询条件
+	//如果keyword不为空，就根据标题或摘要查询
 	if keyword != "" {
 		like := "%" + keyword + "%"
 		query = query.Where("title LIKE ? OR summary LIKE ?", like, like)
 	}
+	//如果categoryID大于0，就根据分类ID查询
 	if categoryID > 0 {
 		query = query.Where("category_id = ?", categoryID)
 	}
@@ -42,7 +45,7 @@ func ListArticles(ctx context.Context, p *request.PageParams, keyword string, ca
 		query = query.Where("status = ?", *status)
 	}
 
-	// P0：标签条件必须在 Count 之前，否则总数不含标签筛选，分页会错位
+	// P0：标签条件必须在 Count(之前，否则总数不含标签筛选，分页会错位)
 	if tagID > 0 {
 		// EXISTS 比 IN 子查询更稳定，配合 article_tags(tag_id, article_id) 索引
 		query = query.Where(
@@ -51,17 +54,23 @@ func ListArticles(ctx context.Context, p *request.PageParams, keyword string, ca
 		)
 	}
 
+	//查询的文章总数
 	var total int64
+	//查询文章总数-通过上面的查询条件后，查询文章总数
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, wrapErr("count articles", err)
 	}
 
 	// P0：列表不返回完整 longtext；保留 400 字是为了让摘要为空的卡片仍能生成摘要
 	err := query.
+		//select:查询文章的id, title, summary, cover, category_id, status, views, like_count, is_top, created_at, updated_at, LEFT(content, 400) AS content
 		Select("id, title, summary, cover, category_id, status, views, like_count, is_top, created_at, updated_at, LEFT(content, 400) AS content").
 		Preload("Category").Preload("Tags").
+		//order:根据is_top降序，created_at降序排序
 		Order("is_top DESC, created_at DESC").
+		//offset:跳过p.Offset条记录
 		Offset(p.Offset()).Limit(p.PageSize).
+		//find:查询文章
 		Find(&articles).Error
 	return articles, total, wrapErr("list articles", err)
 }
@@ -83,6 +92,7 @@ func GetPublishedArticleByID(ctx context.Context, id uint64) (*database.Article,
 	err := global.DB.WithContext(ctx).Preload("Category").Preload("Tags").
 		Where("id = ? AND status = 1", id).First(&article).Error
 	if err != nil {
+		//wrapErr:包装错误，添加错误信息
 		return nil, wrapErr("get published article", err)
 	}
 	return &article, nil

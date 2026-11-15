@@ -14,8 +14,11 @@ type AuthRouter struct{}
 func (r *AuthRouter) InitAuthRouter(public *gin.RouterGroup) {
 	auth := public.Group("/auth")
 	{
+		// 登录
 		auth.POST("/login", api.ApiGroupApp.AuthApi.Login)
+		// 退出登录
 		auth.POST("/logout", api.ApiGroupApp.AuthApi.Logout)
+		// 获取用户信息，
 		auth.GET("/profile", middleware.JWTAuth(), api.ApiGroupApp.AuthApi.GetProfile)
 	}
 }

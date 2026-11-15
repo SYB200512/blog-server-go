@@ -16,8 +16,10 @@ func BodyLimit(jsonLimit, uploadLimit int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var limit int64
 		switch {
+		// JSON 请求体：限制为配置的 JSONLimit
 		case strings.HasPrefix(c.ContentType(), "application/json"):
 			limit = jsonLimit
+			// multipart/form-data 请求体：限制为配置的 uploadLimit
 		case strings.HasPrefix(c.ContentType(), "multipart/form-data"):
 			limit = uploadLimit
 		default:
@@ -28,6 +30,7 @@ func BodyLimit(jsonLimit, uploadLimit int64) gin.HandlerFunc {
 
 		// 已知长度时直接拒绝，避免把超大 body 读进内存
 		if c.Request.ContentLength > limit {
+			//Abort(): 中止后续处理，返回 413 错误响应
 			c.Abort()
 			response.Fail(c, http.StatusRequestEntityTooLarge, response.CodeInvalidParam, "请求体过大")
 			return

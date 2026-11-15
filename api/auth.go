@@ -24,9 +24,11 @@ type AuthApi struct{}
 func (a *AuthApi) Login(c *gin.Context) {
 	var req request.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		// InvalidParam 处理参数错误，返回 400 状态码
 		response.InvalidParam(c, "用户名和密码不能为空")
 		return
 	}
+	// 调用认证服务进行登录
 	result, err := authService.Login(c.Request.Context(), &req)
 	if err != nil {
 		response.FromError(c, err)
@@ -34,6 +36,7 @@ func (a *AuthApi) Login(c *gin.Context) {
 	}
 	// refresh token 只写入 HttpOnly Cookie，响应体里不出现
 	utils.SetRefreshToken(c, result.RefreshToken, int(result.RefreshTTL.Seconds()))
+	// 登录成功，返回 access token 和过期时间
 	response.Success(c, &response.LoginResponse{
 		AccessToken:          result.AccessToken,
 		AccessTokenExpiresAt: result.ExpiresAt.UnixMilli(),
@@ -50,6 +53,7 @@ func (a *AuthApi) Login(c *gin.Context) {
 // @Router /api/v1/auth/logout [post]
 // @Id auth_logout
 func (a *AuthApi) Logout(c *gin.Context) {
+	// 调用认证服务退出登录，这个不需要调用service层了，直接调用Logout方法，即可删除缓存中的会话
 	authService.Logout(c.Request.Context(), utils.GetRefreshToken(c))
 	utils.ClearRefreshToken(c)
 	response.Success(c, nil)

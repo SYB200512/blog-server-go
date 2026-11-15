@@ -50,10 +50,16 @@ func InitLogger() {
 		MaxAge:     cfg.MaxAge,
 		LocalTime:  true,
 	}
+
 	// 文件日志核心：按 JSON 格式写入 lumberjack 日志文件
+	// 日志级别：根据配置的级别，过滤掉低于该级别的日志
 	fileCore := zapcore.NewCore(
+		// 日志编码器：按 JSON 格式编码
 		zapcore.NewJSONEncoder(encoderConfig),
+		// 日志写入器：将日志写入 lumberjack 日志文件
+		// 进行加锁：确保并发写入时不会出现数据不一致的情况
 		zapcore.AddSync(writer),
+		// 日志级别：根据配置的级别，过滤掉低于该级别的日志
 		level,
 	)
 
@@ -74,6 +80,7 @@ func InitLogger() {
 	global.Log = zap.New(
 		zapcore.NewTee(cores...),
 		zap.AddCaller(), // 日志中带上调用位置的 文件名:行号
+		// 日志级别：根据配置的级别，过滤掉低于该级别的日志
 		zap.AddStacktrace(zapcore.ErrorLevel),
 	)
 

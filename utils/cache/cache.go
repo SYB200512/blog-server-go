@@ -73,6 +73,8 @@ const (
 )
 
 var (
+	// failStreak: 连续失败次数
+	// openUntil: 熔断窗口结束时间，0 表示闭合
 	failStreak atomic.Int32
 	openUntil  atomic.Int64 // unix nano；0 表示闭合
 )
@@ -80,10 +82,12 @@ var (
 // allowed 熔断期间直接跳过 Redis。
 // 熔断窗口结束后放行一次半开试探：成功则闭合，失败立即重新熔断（见 onFailure）。
 func allowed() bool {
+	//Load:原子的读取openUntil的值，防止并发读取时的不一致问题
 	until := openUntil.Load()
 	return until == 0 || time.Now().UnixNano() >= until
 }
 
+// onSuccess 成功读取缓存：重置熔断器
 func onSuccess() {
 	failStreak.Store(0)
 	openUntil.Store(0)
@@ -136,12 +140,15 @@ func LogHitRateLoop(interval time.Duration) {
 
 // —— 读写原语 ——
 
-// Get 读取并反序列化。任何错误（含反序列化失败）都降级为 Miss，绝不上抛。
+// Get 读取redis并反序列化。任何错误（含反序列化失败）都降级为 Miss，绝不上抛。
 func Get(ctx context.Context, k string, dst any) Result {
+	// 检查熔断器是否允许读取
 	if !allowed() {
+		//熔断器不允许，返回miss,同时统计未命中次数
 		misses.Add(1)
 		return Miss
 	}
+	// 从 Redis 获取缓存数据，并转换为字节数组
 	data, err := global.Redis.Get(ctx, k).Bytes()
 	if err != nil {
 		misses.Add(1)
@@ -150,11 +157,15 @@ func Get(ctx context.Context, k string, dst any) Result {
 		}
 		return Miss
 	}
+	// 成功读取缓存：重置熔断器
 	onSuccess()
+	// 命中缓存：增加命中统计
 	hits.Add(1)
+	// 检查缓存数据是否为空,如果为空,则返回null，null代表
 	if len(data) == 0 {
 		return Null
 	}
+	// 反序列化缓存数据到目标结构体
 	if err := json.Unmarshal(data, dst); err != nil {
 		// 数据被污染（如手动改过）：按未命中处理，让 DB 值随后覆盖它
 		global.Log.Warn("缓存反序列化失败，按未命中处理", zap.String("key", k), zap.Error(err))
@@ -220,15 +231,23 @@ func AddView(ctx context.Context, id uint64, base int64) (int64, bool) {
 	if !allowed() {
 		return base, false
 	}
+
+	// 生成浏览量 key，格式为 views:article_id
 	k := ViewsKey(id)
+	//pipe：创建一个Redis管道，用于批量执行多个命令
 	pipe := global.Redis.Pipeline()
 	pipe.SetNX(ctx, k, base, 0)
+	//incr：增加浏览量并且返回最新值
 	incr := pipe.Incr(ctx, k)
+	//Exec：执行管道中的所有命令
 	if _, err := pipe.Exec(ctx); err != nil {
+		//批量执行失败，onFailure在熔断器中记录失败次数
 		onFailure("incr", k, err)
 		return base, false
 	}
+	//批量执行成功，重置熔断器
 	onSuccess()
+	//取出incr命令的结果，即最新浏览量
 	return incr.Val(), true
 }
 

@@ -18,6 +18,8 @@ func GinLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
+		// 记录查询参数：用于日志分析，避免泄露敏感信息
+		// 注意：查询参数可能包含密码、敏感信息等，建议在生产环境过滤或加密
 		query := c.Request.URL.RawQuery
 
 		c.Next()
@@ -26,7 +28,7 @@ func GinLogger() gin.HandlerFunc {
 		if strings.HasPrefix(path, "/swagger") || path == "/api/health" {
 			return
 		}
-
+		// 记录请求访问日志：包含 trace id、方法、路径、状态码、耗时、IP、查询参数（如果有）
 		status := c.Writer.Status()
 		fields := []zap.Field{
 			zap.String("trace_id", traceid.From(c.Request.Context())),
@@ -36,6 +38,7 @@ func GinLogger() gin.HandlerFunc {
 			zap.String("ip", c.ClientIP()),
 			zap.Duration("cost", time.Since(start)),
 		}
+		// 记录查询参数：用于日志分析，避免泄露敏感信息
 		if query != "" {
 			fields = append(fields, zap.String("query", query))
 		}
@@ -43,7 +46,7 @@ func GinLogger() gin.HandlerFunc {
 		if len(c.Errors) > 0 {
 			fields = append(fields, zap.String("errors", c.Errors.ByType(gin.ErrorTypePrivate).String()))
 		}
-
+		// 记录请求处理结果：成功或失败
 		if status >= 500 {
 			global.Log.Error("请求处理失败", fields...)
 		} else {
@@ -63,6 +66,7 @@ func GinRecovery() gin.HandlerFunc {
 					zap.String("method", c.Request.Method),
 					zap.String("path", c.Request.URL.Path),
 				)
+				// 写回 500 错误响应：通知客户端服务端内部错误，中止后续处理
 				c.AbortWithStatus(http.StatusInternalServerError)
 			}
 		}()

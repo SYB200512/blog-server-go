@@ -23,6 +23,7 @@ func RequestContext() gin.HandlerFunc {
 		// trace id 属于“请求域元数据”：只放这一个值，不放业务参数
 		ctx := traceid.With(c.Request.Context())
 		c.Request = c.Request.WithContext(ctx)
+		// 继续处理请求
 		c.Next()
 	}
 }

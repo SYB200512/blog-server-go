@@ -42,18 +42,22 @@ type frontListCacheEntry struct {
 
 // ArticleService 文章业务
 type ArticleService struct {
-	// group 合并并发回源：同一 key 的缓存击穿流量只查一次 DB（防击穿）
+	// group 是一个单例的 singleflight.Group，用于合并并发回源：同一 key 的缓存击穿流量只查一次 DB（防击穿）
 	group singleflight.Group
 }
 
 // —— 浏览量：Redis INCR 计数 + 定时绝对值回写 MySQL ——
 
 var (
-	viewsDirty   = make(map[uint64]struct{})
+	// viewsDirty 浏览量脏标记：记录需要回写的文章 ID
+	viewsDirty = make(map[uint64]struct{})
+	// viewsDirtyMu 浏览量脏标记互斥锁：保护 viewsDirty 访问
 	viewsDirtyMu sync.Mutex
-	flusherOnce  sync.Once
+	// flusherOnce 浏览量回写器单例：确保只启动一次
+	flusherOnce sync.Once
 )
 
+// / markViewsDirty 标记文章浏览量脏，触发回写
 func markViewsDirty(id uint64) {
 	viewsDirtyMu.Lock()
 	viewsDirty[id] = struct{}{}
@@ -62,8 +66,10 @@ func markViewsDirty(id uint64) {
 
 // startViewsFlusher 首次计数时启动后台回写协程（进程级单例）
 func (s *ArticleService) startViewsFlusher() {
+	//保证整个进程只启动一次回写协程
 	flusherOnce.Do(func() {
 		go func() {
+			//定时器，每viewsFlushInterval时间调用一次FlushArticleViews函数
 			ticker := time.NewTicker(viewsFlushInterval)
 			defer ticker.Stop()
 			for range ticker.C {
@@ -76,6 +82,7 @@ func (s *ArticleService) startViewsFlusher() {
 // FlushArticleViews 把 Redis 中脏的浏览量计数回写 MySQL（绝对值，幂等，重试安全）。
 // 定时协程与优雅停机都会调用；单次失败保留 dirty 标记，下轮重试。
 func FlushArticleViews(ctx context.Context) {
+	//viewsDirtyMu:保护viewsDirty的访问，防止并发修改导致的竞态条件
 	viewsDirtyMu.Lock()
 	ids := make([]uint64, 0, len(viewsDirty))
 	for id := range viewsDirty {
@@ -102,11 +109,14 @@ func FlushArticleViews(ctx context.Context) {
 // base 是计数 key 不存在时的初始化种子（冷路径为 DB 真实值，热路径为 meta 中的快照值）。
 // Redis 不可用时返回 base：计数冻结但接口可用，Redis 恢复后自动继续。
 func (s *ArticleService) countView(ctx context.Context, id uint64, base int) int {
+	// 启动后台回写浏览量到MySQL的协程（进程级单例）
 	s.startViewsFlusher()
+	// 浏览量 +1 并返回最新值
 	n, ok := cache.AddView(ctx, id, int64(base))
 	if !ok {
 		return base
 	}
+	// 标记文章浏览量脏，触发回写
 	markViewsDirty(id)
 	return int(n)
 }
@@ -148,13 +158,17 @@ func invalidateArticleLists(ctx context.Context) {
 // 只缓存"默认首页"这一种组合（page=1, page_size=10, 无关键词/分类/标签）：
 // 筛选组合的 key 会爆炸且命中率极低，得不偿失，直连 DB。
 func (s *ArticleService) ListArticles(ctx context.Context, q *request.ArticleQuery) (*response.PageResult, error) {
+	// 初始化分页参数
 	p := &request.PageParams{Page: q.Page, PageSize: q.PageSize}
+	// 规范化分页参数
 	p.Normalize()
-
+	// 判断是否为“纯默认首页”：没有关键词、没有分类、没有标签，且`page=1 & page_size=10` 。是的话走缓存版本
 	if isDefaultListQuery(q, p) {
+		//直接走缓存版本
 		return s.cachedDefaultList(ctx, p)
 	}
 
+	// 查询文章列表
 	articles, total, err := dao.ListArticles(ctx, p, q.Keyword, q.CategoryID, q.TagID, nil, false)
 	if err != nil {
 		global.Log.Error("查询前台文章列表失败", zap.Error(err))
@@ -171,26 +185,36 @@ func isDefaultListQuery(q *request.ArticleQuery, p *request.PageParams) bool {
 
 // cachedDefaultList 默认首页列表：整包缓存 + singleflight 回源
 func (s *ArticleService) cachedDefaultList(ctx context.Context, p *request.PageParams) (*response.PageResult, error) {
+	// 缓存 key
 	key := cache.DefaultListKey()
 
+	//cached:结构体缓存，默认首页文章列表
 	var cached frontListCacheEntry
+	// 从缓存中获取默认首页文章列表
 	if cache.Get(ctx, key, &cached) == cache.Hit {
 		return &response.PageResult{List: cached.List, Total: cached.Total, Page: p.Page, PageSize: p.PageSize}, nil
 	}
 
+	//缓存未命中，从数据库查询默认首页文章列表
+	//掉用singleflight.Do方法，合并并发回源：同一 key 的缓存击穿流量只查一次 DB（防击穿）
+	//如果缓存中存在，默认返回缓存中的数据
+	//Do返回
 	v, err, _ := s.group.Do(key, func() (any, error) {
 		// 二次检查：等待 singleflight 期间可能已被其他请求回填
 		var e frontListCacheEntry
 		if cache.Get(ctx, key, &e) == cache.Hit {
 			return &e, nil
 		}
+		// 从数据库查询默认首页文章列表
 		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
+		// 查询默认首页文章列表
 		articles, total, err := dao.ListArticles(dbCtx, p, "", 0, 0, nil, false)
 		if err != nil {
 			return nil, err
 		}
 		e = frontListCacheEntry{List: articles, Total: total}
+		//将首页文章列表缓存到redis中
 		cache.Set(ctx, key, &e, cache.WithJitter(defaultListTTL))
 		return &e, nil
 	})
@@ -198,6 +222,7 @@ func (s *ArticleService) cachedDefaultList(ctx context.Context, p *request.PageP
 		global.Log.Error("查询前台文章列表失败", zap.Error(err))
 		return nil, err
 	}
+	//v.(*frontListCacheEntry)将v断言为frontListCacheEntry类型
 	entry := v.(*frontListCacheEntry)
 	return &response.PageResult{List: entry.List, Total: entry.Total, Page: p.Page, PageSize: p.PageSize}, nil
 }
@@ -224,19 +249,23 @@ func (s *ArticleService) AdminListArticles(ctx context.Context, q *request.Artic
 //
 // 防护：空值哨兵防穿透（60s），singleflight 防击穿，TTL 抖动防雪崩。
 func (s *ArticleService) GetArticle(ctx context.Context, id uint64) (*database.Article, error) {
+	// 返回一个redis的缓存key
 	key := cache.ArticleMetaKey(id)
 
 	var meta database.Article
+	//先从缓存中获取文章详情
 	switch cache.Get(ctx, key, &meta) {
 	case cache.Null:
 		// 空值哨兵：该 id 在数据库里也不存在
 		global.Log.Warn("前台文章不存在", zap.Uint64("article_id", id))
 		return nil, errs.Wrap(errs.ErrNotFound, "文章不存在", errs.ErrNotFound)
 	case cache.Hit:
+		// 命中缓存：返回缓存中的数据，包含正文
+		// assembleFromMeta:将缓存中的数据，包含正文，返回给客户端
 		return s.assembleFromMeta(ctx, &meta)
 	}
 
-	// 未命中：singleflight 合并并发回源
+	// 缓存未命中，group.Do方法只会放一个请求，其他请求会等待第一个请求完成
 	v, err, _ := s.group.Do(key, func() (any, error) {
 		// 二次检查：等待 singleflight 期间可能已被其他请求回填
 		var m database.Article
@@ -249,6 +278,7 @@ func (s *ArticleService) GetArticle(ctx context.Context, id uint64) (*database.A
 		// 独立 ctx：不能用请求 ctx，第一个请求被客户端取消会带崩所有等待者
 		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
+		// 从数据库查询文章详情
 		article, err := dao.GetPublishedArticleByID(dbCtx, id)
 		if err != nil {
 			if errors.Is(err, errs.ErrNotFound) {
@@ -261,6 +291,7 @@ func (s *ArticleService) GetArticle(ctx context.Context, id uint64) (*database.A
 		m2 := *article
 		m2.Content = ""
 		cache.Set(ctx, key, &m2, cache.WithJitter(articleMetaTTL))
+		// 浏览量 +1 并返回最新值
 		article.Views = s.countView(ctx, id, article.Views)
 		return article, nil
 	})
@@ -272,6 +303,7 @@ func (s *ArticleService) GetArticle(ctx context.Context, id uint64) (*database.A
 		global.Log.Error("查询前台文章详情失败", zap.Uint64("article_id", id), zap.Error(err))
 		return nil, err
 	}
+	// 返回文章详情
 	return v.(*database.Article), nil
 }
 
@@ -449,6 +481,7 @@ func (s *ArticleService) DeleteArticle(ctx context.Context, id uint64) error {
 
 // Archive 时间归档：整包缓存 + singleflight 回源
 func (s *ArticleService) Archive(ctx context.Context) (map[string][]database.Article, error) {
+	// 生成归档 key，格式为 archive:month
 	key := cache.ArchiveKey()
 
 	var cached map[string][]database.Article
@@ -468,6 +501,7 @@ func (s *ArticleService) Archive(ctx context.Context) (map[string][]database.Art
 		if err != nil {
 			return nil, err
 		}
+		// 缓存归档结果，TTL 为 1 小时
 		cache.Set(ctx, key, result, cache.WithJitter(archiveTTL))
 		return result, nil
 	})

@@ -55,9 +55,10 @@ func RunServer() {
 	// 收到 Ctrl+C / k8s SIGTERM 时取消 ctx
 	//NotifyContext 会返回一个 context.Context，收到信号后会取消该 context:监听的信号：ctrl+c / k8s SIGTERM
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	// 取消信号监听：确保在程序退出前不会收到信号中断
+	// 取消信号监听：确保在程序退出前不会收到信号中断，取消NotifyContext防止内存泄漏
 	defer stop()
 
+	// 等待信号取消：阻塞等待，直到收到信号
 	<-ctx.Done()
 
 	// 优雅停机：等待所有在途请求处理完，再关闭服务器

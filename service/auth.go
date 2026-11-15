@@ -33,6 +33,7 @@ type LoginResult struct {
 
 // Login 用户登录
 func (s *AuthService) Login(ctx context.Context, req *request.LoginRequest) (*LoginResult, error) {
+	// 查询用户
 	user, err := dao.GetUserByUsername(ctx, req.Username)
 	if err != nil {
 		global.Log.Warn("登录失败：用户查询错误", zap.String("username", req.Username), zap.Error(err))
@@ -43,11 +44,12 @@ func (s *AuthService) Login(ctx context.Context, req *request.LoginRequest) (*Lo
 		return nil, err
 	}
 	// 校验密码
+	// bcrypt.CompareHashAndPassword 对比密码哈希值与用户存储的哈希值是否匹配
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
 		global.Log.Warn("登录失败：密码错误", zap.String("username", req.Username))
 		return nil, errs.New(errs.ErrInvalid, "用户名或密码错误")
 	}
-
+	// 签发 access token 和 refresh token
 	j := utils.NewJWT()
 	accessToken, expiresAt, err := j.CreateAccessToken(user.ID, user.Username, user.Role)
 	if err != nil {
@@ -60,17 +62,20 @@ func (s *AuthService) Login(ctx context.Context, req *request.LoginRequest) (*Lo
 		global.Log.Error("生成会话标识失败", zap.String("username", req.Username), zap.Error(err))
 		return nil, err
 	}
+	// 将sessionID 写入 refresh token 的claims 中，用于校验会话
 	refreshToken, refreshExpiresAt, err := j.CreateRefreshToken(user.ID, sessionID)
 	if err != nil {
 		global.Log.Error("生成 refresh token 失败", zap.String("username", req.Username), zap.Error(err))
 		return nil, err
 	}
+	// 计算 refresh token 过期时间
 	refreshTTL := time.Until(refreshExpiresAt)
+	// 保存登录会话，将 refreshToken 存储到缓存中，也就同时缓存了 sessionID 和 refreshToken
 	if err := cache.SaveRefreshSession(ctx, user.ID, sessionID, refreshToken, refreshTTL); err != nil {
 		global.Log.Error("保存登录会话失败", zap.Uint64("user_id", user.ID), zap.Error(err))
 		return nil, errs.Wrap(errs.ErrStorage, "登录状态保存失败，请稍后重试", err)
 	}
-
+	// 返回登录结果
 	return &LoginResult{
 		AccessToken:  accessToken,
 		ExpiresAt:    expiresAt,
@@ -99,10 +104,12 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) {
 	if refreshToken == "" {
 		return
 	}
+	// 从 refresh token 中提取 sessionID 和 userID
 	claims, err := utils.NewJWT().ParseRefreshToken(refreshToken)
 	if err != nil {
 		return
 	}
+	// 删除缓存中的会话
 	if err := cache.DeleteRefreshSession(ctx, claims.UserID, claims.SessionID); err != nil {
 		global.Log.Warn("注销会话失败", zap.Uint64("user_id", claims.UserID), zap.Error(err))
 	}

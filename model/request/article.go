@@ -2,8 +2,8 @@ package request
 
 // ArticleQuery 文章查询参数
 type ArticleQuery struct {
-	Page       int    `form:"page"`
-	PageSize   int    `form:"page_size"`
+	Page       int    `form:"page"`                     // 页码
+	PageSize   int    `form:"page_size"`                // 每页数量
 	Keyword    string `form:"keyword" binding:"max=64"` // 标题/摘要关键词,限制关键词长度，避免超长 LIKE
 	CategoryID uint64 `form:"category_id"`              // 分类筛选
 	TagID      uint64 `form:"tag_id"`                   // 标签筛选

@@ -34,6 +34,9 @@ type JWT struct {
 	refreshSecret []byte
 }
 
+// NewJWT 创建 JWT 实例
+// 用于初始化 JWT 签发器，设置 access token 和 refresh token 的密钥。
+// 密钥从配置文件中读取。
 func NewJWT() *JWT {
 	return &JWT{
 		accessSecret:  []byte(global.Config.JWT.AccessTokenSecret),
@@ -43,16 +46,19 @@ func NewJWT() *JWT {
 
 // CreateAccessToken 生成短期 access token，并返回其过期时间。
 func (j *JWT) CreateAccessToken(userID uint64, username string, role int8) (string, time.Time, error) {
+	// 解析 access token 过期时间配置，转换为时间持续时间
 	ttl, err := time.ParseDuration(global.Config.JWT.AccessTokenExpiryTime)
 	if err != nil {
 		return "", time.Time{}, err
 	}
 	now := time.Now()
 	expiresAt := now.Add(ttl)
+	// 构建 access token 的声明，包含用户 ID、用户名、角色、过期时间、签发时间、签发者
 	claims := AccessClaims{
 		UserID:   userID,
 		Username: username,
 		Role:     role,
+		// 注册的声明，包含过期时间、签发时间、签发者
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -90,7 +96,8 @@ func (j *JWT) CreateRefreshToken(userID uint64, sessionID string) (string, time.
 	return token, expiresAt, nil
 }
 
-// ParseAccessToken 解析 access token。过期时返回的错误可用 IsTokenExpired 判断。
+// ParseAccessToken 解析 access token，返回用户信息。
+// 用于校验 access token 有效性，提取用户信息。
 func (j *JWT) ParseAccessToken(tokenString string) (*AccessClaims, error) {
 	claims := &AccessClaims{}
 	if err := j.parse(tokenString, claims, j.accessSecret); err != nil {
@@ -108,6 +115,8 @@ func (j *JWT) ParseRefreshToken(tokenString string) (*RefreshClaims, error) {
 	return claims, nil
 }
 
+// parse 解析 JWT token，校验签名与过期时间。
+// 用于通用解析逻辑，不直接暴露给外部。
 func (j *JWT) parse(tokenString string, claims jwt.Claims, secret []byte) error {
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -131,9 +140,11 @@ func IsTokenExpired(err error) bool {
 
 // NewSessionID 生成随机的会话标识，用于支持多设备登录与单设备注销。
 func NewSessionID() (string, error) {
+	// 生成随机会话标识，长度为 16 字节
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}
+	// 将字节数组转换为十六进制字符串
 	return hex.EncodeToString(buf), nil
 }
