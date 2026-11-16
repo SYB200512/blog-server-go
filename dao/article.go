@@ -100,15 +100,20 @@ func GetPublishedArticleByID(ctx context.Context, id uint64) (*database.Article,
 
 // CreateArticle 创建文章
 func CreateArticle(ctx context.Context, article *database.Article, tagIDs []uint64) error {
+
+	//wrapErr:包装错误，添加错误信息
+	//Transaction:开启事务，确保文章创建和标签关联原子性
 	return wrapErr("create article", global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(article).Error; err != nil {
 			return err
 		}
 		if len(tagIDs) > 0 {
 			var tags []database.Tag
+			//根据tagIDs查询标签
 			if err := tx.Where("id IN ?", tagIDs).Find(&tags).Error; err != nil {
 				return err
 			}
+			//关联标签，Model指定操作主体，Association指定操作主题上的关联字段，找到了关联表article_tags，Replace指定tags中的标签替换article的Tags
 			if err := tx.Model(article).Association("Tags").Replace(tags); err != nil {
 				return err
 			}
