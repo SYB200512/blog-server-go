@@ -145,9 +145,13 @@ func invalidateArticle(ctx context.Context, id uint64) {
 // invalidateArticleLists 新建文章后的列表类缓存失效（尚无详情缓存可删）
 func invalidateArticleLists(ctx context.Context) {
 	cache.Del(ctx,
+		// 默认首页文章列表
 		cache.DefaultListKey(),
+		// 归档文章列表
 		cache.ArchiveKey(),
+		// 分类文章列表
 		cache.CategoryListKey(),
+		// 标签文章列表
 		cache.TagListKey(),
 	)
 }
@@ -358,12 +362,13 @@ func (s *ArticleService) CreateArticle(ctx context.Context, req *request.Article
 		global.Log.Error("创建文章失败", zap.String("title", article.Title), zap.Error(err))
 		return nil, err
 	}
-	// 事务提交成功后失效列表类缓存（分类/标签列表含文章计数，一并失效）
+	// 创建文章成功后失效列表类缓存（分类/标签列表含文章计数，一并失效）
 	invalidateArticleLists(ctx)
 	// 回写图片台账分类：封面 / 正文插图
 	ServiceGroupApp.ImageService.MarkArticleImages(ctx, article.Cover, article.Content)
 	// 发布且未指定封面时，异步生成封面并回写（不阻塞发布）
 	if article.Status == 1 && article.Cover == "" {
+		//异步生成文章封面：summary
 		s.generateCoverAsync(article.ID, article.Title, article.Summary)
 	}
 	return article, nil
@@ -393,6 +398,7 @@ func (s *ArticleService) generateCoverAsync(id uint64, title, summary string) {
 				global.Log.Error("生成封面协程 panic", zap.Any("error", r), zap.Uint64("article_id", id))
 			}
 		}()
+		//生成文章封面，根据标题和摘要
 		cover, err := generateArticleCover(ctx, title, summary)
 		if err != nil {
 			global.Log.Error("自动生成封面失败（异步）", zap.Uint64("article_id", id), zap.Error(err))
@@ -401,6 +407,7 @@ func (s *ArticleService) generateCoverAsync(id uint64, title, summary string) {
 		if cover == "" {
 			return
 		}
+		//更新新生成的封面到数据库
 		if err := dao.UpdateArticleCover(ctx, id, cover); err != nil {
 			global.Log.Error("回写封面失败", zap.Uint64("article_id", id), zap.Error(err))
 		} else {
@@ -447,11 +454,12 @@ func (s *ArticleService) UpdateArticle(ctx context.Context, id uint64, req *requ
 	if article.Status == 1 && article.Cover == "" {
 		s.generateCoverAsync(article.ID, article.Title, article.Summary)
 	}
+	// 更新文章数据库记录
 	if err := dao.UpdateArticle(ctx, article, req.TagIDs); err != nil {
 		global.Log.Error("更新文章失败", zap.Uint64("article_id", id), zap.Error(err))
 		return nil, err
 	}
-	// 事务提交成功后失效（含延迟双删）
+	// 事务提交成功后失效缓存（含延迟双删）
 	invalidateArticle(ctx, id)
 	// 回写图片台账分类：封面 / 正文插图
 	ServiceGroupApp.ImageService.MarkArticleImages(ctx, article.Cover, article.Content)

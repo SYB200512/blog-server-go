@@ -21,6 +21,7 @@ type CategoryApi struct{}
 // @Router /api/v1/categories [get]
 // @Id category_list
 func (a *CategoryApi) ListCategories(c *gin.Context) {
+	//查询所有分类列表
 	categories, err := categoryService.ListCategories(c.Request.Context())
 	if err != nil {
 		response.FromError(c, err)
@@ -49,6 +50,7 @@ func (a *CategoryApi) CreateCategory(c *gin.Context) {
 		response.InvalidParam(c, "分类名不能为空")
 		return
 	}
+	//创建分类
 	category, err := categoryService.CreateCategory(c.Request.Context(), &req)
 	if err != nil {
 		response.FromError(c, err)

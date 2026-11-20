@@ -20,8 +20,11 @@ type CommentService struct{}
 // ListComments 后台评论列表
 func (s *CommentService) ListComments(ctx context.Context, q *request.CommentQuery) (*response.PageResult, error) {
 	p := &request.PageParams{Page: q.Page, PageSize: q.PageSize}
+	//归一化分页参数，确保 Page 和 PageSize 在有效范围内，默认值为 1 和 10 分页
 	p.Normalize()
-
+	//查询评论列表
+	//参数：ctx - 上下文，q - 查询参数，articleID - 文章 ID，status - 评论状态
+	//返回：评论列表，总评论数，分页参数
 	comments, total, err := dao.ListComments(ctx, p, 0, q.Status)
 	if err != nil {
 		global.Log.Error("查询后台评论列表失败", zap.Error(err))

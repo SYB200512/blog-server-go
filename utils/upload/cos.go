@@ -60,6 +60,8 @@ func (*Cos) UploadBytes(ctx context.Context, data []byte, filename string) (stri
 	if err != nil {
 		return "", "", err
 	}
+	//拼接对象键，包含前缀和文件名，返回对象键（string）
+	//对象键：前缀/文件名/文件扩展名
 	cfg := global.Config.Storage.Cos
 	key := strings.Trim(cfg.Prefix, "/")
 	if key != "" {
@@ -67,9 +69,11 @@ func (*Cos) UploadBytes(ctx context.Context, data []byte, filename string) (stri
 	}
 	key += buildObjectName(filename)
 
+	//上传文件到 COS，返回（*cos.ObjectPutResult, error）
 	if _, err := client.Object.Put(ctx, key, bytes.NewReader(data), nil); err != nil {
 		return "", "", err
 	}
+	//根据配置的域名，返回公网访问 URL（string）
 	if domain := strings.TrimRight(cfg.Domain, "/"); domain != "" {
 		if !strings.HasPrefix(domain, "http") {
 			domain = "https://" + domain

@@ -21,6 +21,7 @@ func (r *CategoryRouter) InitAdminRouter(admin *gin.RouterGroup) {
 	admin.PUT("/categories/:id", api.ApiGroupApp.CategoryApi.UpdateCategory)
 	admin.DELETE("/categories/:id", api.ApiGroupApp.CategoryApi.DeleteCategory)
 
+	//标签路由
 	admin.POST("/tags", api.ApiGroupApp.CategoryApi.CreateTag)
 	admin.DELETE("/tags/:id", api.ApiGroupApp.CategoryApi.DeleteTag)
 }

@@ -19,7 +19,7 @@ import (
 	"blog-backend/utils/upload"
 )
 
-// aiMessageContent DashScope 返回内容项（文生图时仅含 image）
+// aiMessageContent DashScope 返回内容项（文生图时仅含 image）：规定了ai返回的每个消息的内容项，包含图片URL和文本内容
 type aiMessageContent struct {
 	Image string `json:"image,omitempty"`
 	Text  string `json:"text,omitempty"`
@@ -35,41 +35,54 @@ func generateArticleCover(ctx context.Context, title, summary string) (string, e
 		return "", nil
 	}
 
+	//构建向ai请求的payload
 	payload := map[string]any{
 		"model": "z-image-turbo",
 		"input": map[string]any{
+			//messages 是一个数组，每个元素是一个消息对象，包含角色（user）和内容（text）,包含标题和摘要的提示词，用于生成封面
 			"messages": []map[string]any{
 				{"role": "user", "content": []map[string]any{
+					//text 是一个字符串，包含标题和摘要的提示词，用于生成封面
 					{"text": buildCoverPrompt(title, summary)},
 				}},
 			},
 		},
+		//parameters 是一个映射，用于指定生成的图片参数
 		"parameters": map[string]any{
 			"prompt_extend": true,
 			"size":          "1472*1104",
 		},
 	}
+	//将payload转换为JSON字符串
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}
 
+	//构建请求URL
 	url := strings.TrimRight(cfg.AI.Cover.BaseURL, "/") +
 		"/api/v1/services/aigc/multimodal-generation/generation"
 
+	//创建HTTP请求对象，第四个参数要求是io.Reader类型，这里的NewReader函数将JSON字符串转换为一个可读的流
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
+	//设置请求头：阿里云契约要求Content-Type为application/json，Authorization为Bearer API_KEY
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+cfg.AI.Cover.APIKey)
 
+	//创建HTTP客户端，负责发送请求并接收响应，并设置超时时间为60秒
 	client := &http.Client{Timeout: 60 * time.Second}
+	//执行HTTP请求，获取响应，返回（*http.Response, error）
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("文生图请求失败: %w", err)
 	}
+
 	defer resp.Body.Close()
+
+	//读取响应体，返回字节数组，用于后续解析
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
@@ -78,6 +91,7 @@ func generateArticleCover(ctx context.Context, title, summary string) (string, e
 		return "", fmt.Errorf("文生图返回 %d: %s", resp.StatusCode, string(respBody))
 	}
 
+	//解析响应体
 	var result struct {
 		Output struct {
 			Choices []struct {
@@ -87,6 +101,8 @@ func generateArticleCover(ctx context.Context, title, summary string) (string, e
 			} `json:"choices"`
 		} `json:"output"`
 	}
+
+	//将字节数组转换为结构体实例，返回（*any, error）
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return "", fmt.Errorf("解析文生图响应失败: %w", err)
 	}
@@ -123,11 +139,14 @@ func buildCoverPrompt(title, summary string) string {
 // saveCover 把生成的图片保存到当前配置的存储（本地目录或 COS），
 // 同时写入图片台账（分类：封面），返回可访问的 URL
 func saveCover(ctx context.Context, srcURL string) (string, error) {
+	//创建HTTP客户端，负责发送请求并接收响应，并设置超时时间为60秒
 	client := &http.Client{Timeout: 60 * time.Second}
+	//创建HTTP请求对象，
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srcURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("构造封面下载请求失败: %w", err)
 	}
+	//执行HTTP请求，获取响应，返回（*http.Response, error）
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("下载封面失败: %w", err)
@@ -136,12 +155,14 @@ func saveCover(ctx context.Context, srcURL string) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("下载封面状态码 %d", resp.StatusCode)
 	}
+	//读取响应体，图片二进制进内存
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("读取封面数据失败: %w", err)
 	}
 
 	filename := fmt.Sprintf("cover_%d.png", time.Now().UnixNano())
+	//上传图片到当前配置的存储（本地目录或 COS），返回（string, string, error）
 	url, key, err := upload.NewOss().UploadBytes(ctx, data, filename)
 	if err != nil {
 		return "", fmt.Errorf("保存封面失败: %w", err)

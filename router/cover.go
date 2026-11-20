@@ -11,5 +11,6 @@ type CoverRouter struct{}
 
 // InitPublicRouter 前台封面图片路由
 func (r *CoverRouter) InitPublicRouter(public *gin.RouterGroup) {
+	//如果文章封面保存在本地路径下，直接返回文件
 	public.GET("/covers/:filename", api.ApiGroupApp.CoverApi.GetCover)
 }

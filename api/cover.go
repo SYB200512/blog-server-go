@@ -23,6 +23,7 @@ type CoverApi struct{}
 // @Router /api/v1/covers/{filename} [get]
 // @Id covers_get
 func (a *CoverApi) GetCover(c *gin.Context) {
+	//dir:封面目录,
 	dir := global.Config.AI.Cover.CoversDir
 	// 仅取文件名，防止路径穿越
 	filename := filepath.Base(c.Param("filename"))

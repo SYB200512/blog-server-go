@@ -18,5 +18,6 @@ func (r *CommentRouter) InitPublicRouter(public *gin.RouterGroup) {
 // InitAdminRouter 后台评论管理路由
 func (r *CommentRouter) InitAdminRouter(admin *gin.RouterGroup) {
 	admin.GET("/comments", api.ApiGroupApp.CommentApi.AdminListComments)
+	//审核评论路由
 	admin.PUT("/comments/:id", api.ApiGroupApp.CommentApi.ReviewComment)
 }

@@ -27,6 +27,7 @@ type CategoryService struct {
 
 // ListCategories 分类列表：整包缓存 + singleflight 回源
 func (s *CategoryService) ListCategories(ctx context.Context) ([]database.Category, error) {
+	//分类列表缓存 key
 	key := cache.CategoryListKey()
 
 	var cached []database.Category
@@ -34,12 +35,14 @@ func (s *CategoryService) ListCategories(ctx context.Context) ([]database.Catego
 		return cached, nil
 	}
 
+	//s.group.Do(key, func() (any, error)) 合并并发回源：同一 key 的缓存击穿流量只查一次 DB
 	v, err, _ := s.group.Do(key, func() (any, error) {
 		// 二次检查：等待 singleflight 期间可能已被其他请求回填
 		var c []database.Category
 		if cache.Get(ctx, key, &c) == cache.Hit {
 			return c, nil
 		}
+		//context.WithTimeout 为 DB 查询设置超时预算
 		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		categories, err := dao.ListCategories(dbCtx)
@@ -66,6 +69,7 @@ func (s *CategoryService) CreateCategory(ctx context.Context, req *request.Categ
 		global.Log.Error("创建分类前查询失败", zap.String("name", req.Name), zap.Error(err))
 		return nil, err
 	}
+	//构建分类实体
 	category := &database.Category{Name: req.Name, Description: req.Description}
 	if err := dao.CreateCategory(ctx, category); err != nil {
 		global.Log.Error("创建分类失败", zap.String("name", req.Name), zap.Error(err))
@@ -140,6 +144,7 @@ func (s *CategoryService) ListTags(ctx context.Context) ([]database.Tag, error) 
 		}
 		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
+		//查询所有标签列表
 		tags, err := dao.ListTags(dbCtx)
 		if err != nil {
 			return nil, err

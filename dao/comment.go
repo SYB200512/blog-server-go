@@ -16,6 +16,7 @@ func ListComments(ctx context.Context, p *request.PageParams, articleID uint64, 
 	if articleID > 0 {
 		query = query.Where("article_id = ?", articleID)
 	}
+	//根据评论状态筛选
 	if status != nil {
 		query = query.Where("status = ?", *status)
 	}

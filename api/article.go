@@ -157,6 +157,7 @@ func (a *ArticleApi) CreateArticle(c *gin.Context) {
 // @Router /api/v1/admin/articles/{id} [put]
 // @Id admin_article_update
 func (a *ArticleApi) UpdateArticle(c *gin.Context) {
+	//Param:拿到请求参数id，拿到的是string, strconv.ParseUint转换为uint64
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		response.InvalidParam(c, "无效的文章 ID")
@@ -186,6 +187,7 @@ func (a *ArticleApi) UpdateArticle(c *gin.Context) {
 // @Router /api/v1/admin/articles/{id} [delete]
 // @Id admin_article_delete
 func (a *ArticleApi) DeleteArticle(c *gin.Context) {
+	//Param:拿到请求参数id，拿到的是string, strconv.ParseUint转换为uint64
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		response.InvalidParam(c, "无效的文章 ID")

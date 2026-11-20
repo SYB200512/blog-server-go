@@ -61,6 +61,7 @@ func (a *ImageApi) UploadImage(c *gin.Context) {
 // @Router /api/v1/photos [get]
 // @Id photo_list
 func (a *ImageApi) ListPhotos(c *gin.Context) {
+	//defaultquery从查询参数中获取limit，默认值为60，并通过atoi转换为整数
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "60"))
 	list, err := imageService.ListPhotos(c.Request.Context(), limit)
 	if err != nil {

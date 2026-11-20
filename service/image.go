@@ -103,6 +103,7 @@ func (s *ImageService) UpdateCategory(ctx context.Context, ids []uint64, categor
 
 // ListPhotos 图片墙：公开读取分类为「图片墙」的图片
 func (s *ImageService) ListPhotos(ctx context.Context, limit int) ([]database.Image, error) {
+	//limit:返回数量，默认值为60，最大值为100
 	if limit <= 0 || limit > 100 {
 		limit = 60
 	}
@@ -115,18 +116,25 @@ var markdownImageRegex = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
 // MarkArticleImages 文章保存后，按用途回写图片分类：封面 → 封面，正文引用 → 插图
 func (s *ImageService) MarkArticleImages(ctx context.Context, cover, content string) {
 	if cover != "" {
+		//设置了文章封面，就将这个图片的分类也设置为封面分类
 		if err := dao.UpdateImageCategoryByURLs(ctx, []string{cover}, appTypes.Cover); err != nil {
 			global.Log.Warn("回写封面分类失败", zap.String("cover", cover), zap.Error(err))
 		}
 	}
 
+	//一个包中的方法，从正文中提取图片 URL（供其他模块复用）此时matches是一个二维数组，每个元素是一个匹配的子字符串数组
+	// 这里直接调用，避免重复实现
 	matches := markdownImageRegex.FindAllStringSubmatch(content, -1)
 	if len(matches) == 0 {
 		return
 	}
+
+	//seen是一个 map，记录文章正文图片（不重复处理）用来查重的，避免重复处理的图片
 	seen := make(map[string]struct{}, len(matches))
+	//urls是一个数组，记录最终的筛选后文章正文图片（不重复处理）
 	urls := make([]string, 0, len(matches))
 	for _, m := range matches {
+		//TrimSpace() 方法用于移除字符串首尾的空格字符
 		u := strings.TrimSpace(m[1])
 		if u == "" || u == cover {
 			continue
@@ -137,6 +145,7 @@ func (s *ImageService) MarkArticleImages(ctx context.Context, cover, content str
 		seen[u] = struct{}{}
 		urls = append(urls, u)
 	}
+	//将正文中的图片分类也设置为插图分类
 	if err := dao.UpdateImageCategoryByURLs(ctx, urls, appTypes.Illustration); err != nil {
 		global.Log.Warn("回写正文插图分类失败", zap.Error(err))
 	}
