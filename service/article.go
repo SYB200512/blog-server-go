@@ -368,7 +368,7 @@ func (s *ArticleService) CreateArticle(ctx context.Context, req *request.Article
 	ServiceGroupApp.ImageService.MarkArticleImages(ctx, article.Cover, article.Content)
 	// 发布且未指定封面时，异步生成封面并回写（不阻塞发布）
 	if article.Status == 1 && article.Cover == "" {
-		//异步生成文章封面：summary
+		//异步生成文章封面：根据标题和摘要生成封面
 		s.generateCoverAsync(article.ID, article.Title, article.Summary)
 	}
 	return article, nil

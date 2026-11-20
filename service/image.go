@@ -111,9 +111,10 @@ func (s *ImageService) ListPhotos(ctx context.Context, limit int) ([]database.Im
 }
 
 // markdownImageRegex 匹配 Markdown 图片语法 ![alt](url) 中的 URL
+// markdownImageRegex是一个正则表达式对象，用于匹配Markdown图片语法中的URL
 var markdownImageRegex = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
 
-// MarkArticleImages 文章保存后，按用途回写图片分类：封面 → 封面，正文引用 → 插图
+// MarkArticleImages文章保存后，给文章用到的图片在image台账中设置分类：封面 → 封面，正文引用 → 插图
 func (s *ImageService) MarkArticleImages(ctx context.Context, cover, content string) {
 	if cover != "" {
 		//设置了文章封面，就将这个图片的分类也设置为封面分类
@@ -122,8 +123,7 @@ func (s *ImageService) MarkArticleImages(ctx context.Context, cover, content str
 		}
 	}
 
-	//一个包中的方法，从正文中提取图片 URL（供其他模块复用）此时matches是一个二维数组，每个元素是一个匹配的子字符串数组
-	// 这里直接调用，避免重复实现
+	//通过调用markdownImageRegex正则表达式对象的FindAllStringSubmatch方法，从文章正文content提取所有图片URL
 	matches := markdownImageRegex.FindAllStringSubmatch(content, -1)
 	if len(matches) == 0 {
 		return

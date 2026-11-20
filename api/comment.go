@@ -22,7 +22,7 @@ type CommentApi struct{}
 // @Router /api/v1/articles/{id}/comments [get]
 // @Id comment_list
 func (a *CommentApi) ListCommentsByArticle(c *gin.Context) {
-	//获取文章ID并解析为uint64类型0
+	//获取文章ID并解析为uint64类型
 	articleID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		response.InvalidParam(c, "无效的文章 ID")
